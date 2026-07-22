@@ -64,10 +64,13 @@ rustPlatform.buildRustPackage rec {
     }
     echo "ok: ${pname} speaks UCI"
 
-    search_txt=$( { printf 'uci\nisready\nposition startpos\ngo depth 10\n'; \
-      sleep 4; printf 'quit\n'; } | $emu "$bin" | tr -d '\r')
+    # Bound the search by time, not depth: `go depth 10` can outrun a fixed
+    # sleep on a slow/loaded CI runner and emit no bestmove before `quit`
+    # (a false failure). `movetime` guarantees a move within a known window.
+    search_txt=$( { printf 'uci\nisready\nposition startpos\ngo movetime 3000\n'; \
+      sleep 8; printf 'quit\n'; } | timeout -s KILL 30 $emu "$bin" 2>/dev/null | tr -d '\r' || true)
     echo "$search_txt" | grep -q '^bestmove ' || {
-      echo "FAIL: ${pname} returned no bestmove from 'go depth 10'" >&2
+      echo "FAIL: ${pname} returned no bestmove from 'go movetime 3000'" >&2
       echo "$search_txt" >&2
       exit 1
     }

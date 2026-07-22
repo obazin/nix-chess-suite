@@ -17,7 +17,12 @@ let
   # branch the Makefile curls from.
   net = fetchurl {
     name = "nihilist_nugget.bin";
-    url = "https://raw.githubusercontent.com/tryingsomestuff/NNUE-Nets/9a32a4c1727a87ab05be4495f2baf8fc57b11e75/nihilist_nugget.bin";
+    # NNUE-Nets stores nets in Git LFS. raw.githubusercontent.com serves only
+    # the 134-byte LFS *pointer*; the actual 151 MB net is at the media
+    # endpoint. (A local build can pass on a raw-URL pin if the real net is
+    # already cached in the store, but a clean CI fetch gets the pointer and
+    # fails the fixed-output hash — hence the media URL.)
+    url = "https://media.githubusercontent.com/media/tryingsomestuff/NNUE-Nets/9a32a4c1727a87ab05be4495f2baf8fc57b11e75/nihilist_nugget.bin";
     hash = "sha256-zZxp0K2FmPSVzXyhunBAoG3WofJ77GFOEV75xemX6ZY=";
   };
 in
