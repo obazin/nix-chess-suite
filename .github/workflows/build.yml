@@ -43,6 +43,14 @@ jobs:
 
       - uses: DeterminateSystems/nix-installer-action@main
 
+      # Binary cache: pulls prebuilt engine paths so runs don't rebuild all 79
+      # from source (fast, and no CPU saturation that flakes smoke tests), and
+      # pushes newly-built paths for the next run. No-op without the secret.
+      - uses: cachix/cachix-action@v15
+        with:
+          name: nix-chess-suite
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
       # Build engines individually so one broken engine does not mask the
       # rest. `nix build .#default` would stop at the first failure.
       - name: Build all engines
@@ -79,6 +87,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
+      - uses: cachix/cachix-action@v15
+        with:
+          name: nix-chess-suite
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Cross-build engines to Windows
         run: |
