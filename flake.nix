@@ -33,20 +33,43 @@
 
       packages = forAllSystems (pkgs:
         let
+          lib = nixpkgs.lib;
           mkEngine = pkgs.callPackage ./lib/mkEngine.nix { };
           engines = import ./engines { inherit pkgs mkEngine; };
           # Engines whose meta.platforms includes this system. The x86-only
           # engines (obsidian, gull, igel) drop out here on aarch64 so they
           # neither break `nix flake check` nor the aggregate.
-          buildable = nixpkgs.lib.filterAttrs
+          buildable = lib.filterAttrs
             (_: drv: builtins.elem pkgs.stdenv.hostPlatform.system
               (drv.meta.platforms or [ ]))
             engines;
+
+          # Windows binaries are produced by cross-compiling the very same
+          # engine derivations to mingw (UCRT) from the x86_64-linux runner —
+          # reusing every patch, net pin and flag rather than reimplementing
+          # them. Exposed only on x86_64-linux (the cross build host); each
+          # engine that declares x86_64-windows becomes `win-<name>`. The
+          # in-sandbox UCI check is dropped for the cross build (it would need
+          # wine); CI verifies the .exe compiles and links.
+          crossPkgs = pkgs.pkgsCross.mingw-ucrt-x86_64;
+          crossEngines = import ./engines {
+            pkgs = crossPkgs;
+            mkEngine = crossPkgs.callPackage ./lib/mkEngine.nix { };
+          };
+          winBuildable = lib.filterAttrs
+            (_: drv: builtins.elem "x86_64-windows" (drv.meta.platforms or [ ]))
+            crossEngines;
+          winPackages = lib.mapAttrs'
+            (name: drv: lib.nameValuePair "win-${name}"
+              (drv.overrideAttrs (_: { doInstallCheck = false; doCheck = false; })))
+            winBuildable;
         in
-        engines // {
+        engines
+        // lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") winPackages
+        // {
           # Everything that builds on this system, for CI to hammer at once.
           default = pkgs.linkFarm "chess-engines" (
-            nixpkgs.lib.mapAttrsToList (name: drv: { inherit name; path = drv; })
+            lib.mapAttrsToList (name: drv: { inherit name; path = drv; })
               buildable
           );
         });

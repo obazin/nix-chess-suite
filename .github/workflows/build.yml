@@ -70,33 +70,46 @@ jobs:
           fi
 
   windows:
-    # Windows is built natively rather than cross-compiled: too many of these
-    # Makefiles do not survive mingw cross-compilation.
-    name: windows (x86_64)
-    runs-on: windows-latest
-    # Non-blocking: native Windows engine builds are still being brought up.
+    # Windows .exe are cross-compiled to mingw (UCRT) from a Linux runner using
+    # the same engine derivations, via pkgsCross. No Windows runner needed.
+    name: windows (x86_64, cross)
+    runs-on: ubuntu-latest
+    # Non-blocking: Windows cross-builds are still being brought up per engine.
     continue-on-error: true
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
 
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-cmake
-            make
-            git
-            curl
-
-      - name: Build engines
-        run: ./ci/build-windows.sh
+      - name: Cross-build engines to Windows
+        run: |
+          set -uo pipefail
+          # win-* packages exist only on x86_64-linux (the cross host).
+          engines=$(nix eval --raw --impure --expr \
+            'builtins.concatStringsSep "\n" (builtins.filter
+               (n: builtins.substring 0 4 n == "win-")
+               (builtins.attrNames (builtins.getFlake (toString ./.)).packages.x86_64-linux))')
+          mkdir -p dist
+          ok=0; fail=0; failed=""
+          for e in $engines; do
+            echo "::group::$e"
+            if nix build ".#$e" --no-link --print-out-paths --print-build-logs > /tmp/out 2>&1; then
+              cp "$(tail -1 /tmp/out)"/bin/*.exe dist/ 2>/dev/null || true
+              ok=$((ok+1)); echo "ok: $e"
+            else
+              tail -20 /tmp/out; echo "::error title=cross-build failed::$e"
+              fail=$((fail+1)); failed="$failed ${e#win-}"
+            fi
+            echo "::endgroup::"
+          done
+          echo "=== Windows cross summary: $ok built, $fail failed ==="
+          [ -n "$failed" ] && echo "Failed:$failed"
+          # Non-blocking job, so do not exit nonzero on per-engine failures;
+          # the summary + annotations carry the state.
+          true
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: engines-windows-x86_64
           path: dist/
+          if-no-files-found: ignore
