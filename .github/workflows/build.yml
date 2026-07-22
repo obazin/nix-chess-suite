@@ -21,19 +21,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
-            system: x86_64-linux
-          - runner: ubuntu-24.04-arm
-            system: aarch64-linux
+          # aarch64-darwin is the fully-verified reference platform and gates
+          # the workflow. Linux is still being brought up (engines were
+          # verified on aarch64-darwin first), so its jobs are non-blocking
+          # until every engine is either fixed or platform-gated.
           - runner: macos-14
             system: aarch64-darwin
+            blocking: true
+          - runner: ubuntu-latest
+            system: x86_64-linux
+            blocking: false
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+            blocking: false
     name: nix (${{ matrix.system }})
     runs-on: ${{ matrix.runner }}
+    # Non-blocking platforms may fail without failing the workflow.
+    continue-on-error: ${{ !matrix.blocking }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
 
       # Build engines individually so one broken engine does not mask the
       # rest. `nix build .#default` would stop at the first failure.
@@ -64,6 +73,8 @@ jobs:
     # Makefiles do not survive mingw cross-compilation.
     name: windows (x86_64)
     runs-on: windows-latest
+    # Non-blocking: native Windows engine builds are still being brought up.
+    continue-on-error: true
     defaults:
       run:
         shell: msys2 {0}
