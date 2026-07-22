@@ -58,6 +58,14 @@ mkEngine rec {
   # beats the CC=/CXX= mkEngine passes on the command line).
   nativeBuildInputs = lib.optional stdenv.hostPlatform.isLinux clang;
 
+  # build.mk's `native` target relies on -march=native, which Nix strips for
+  # reproducibility. On aarch64 that's fine (NEON is baseline), but on x86_64
+  # it leaves no SIMD macro defined and simd.h #errors "No supported SIMD
+  # extension found". Pin a portable AVX2 baseline there.
+  env.NIX_CFLAGS_COMPILE = lib.optionalString
+    (stdenv.hostPlatform.isx86_64 && stdenv.hostPlatform.isLinux)
+    "-march=x86-64-v3";
+
   postPatch = lib.optionalString stdenv.hostPlatform.isLinux ''
     substituteInPlace build.mk \
       --replace-fail 'LDFLAGS :=' 'override CC := clang

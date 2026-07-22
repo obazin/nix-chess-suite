@@ -76,9 +76,13 @@ mkEngine rec {
     # modifications are released under the MIT License." Hence public domain for
     # the engine core, MIT for the port's changes.
     license = with licenses; [ publicDomain mit ];
-    # x86_64-only: no ARM/scalar path, plus Linux-specific fixed-address linking.
-    # See the header comment. Not build-verified on any host available here.
-    platforms = [ "x86_64-linux" "x86_64-windows" ];
+    # x86_64-only, and additionally: Gull's Makefile.linux links with
+    # `-Wl,--defsym=SYM=0xADDRESS` fixed-address flags that modern GNU ld
+    # rejects ("--defsym:1: syntax error"), so it does not build on
+    # x86_64-linux either. Declared for x86_64-windows only (best-effort,
+    # unverified) — it builds on no CI-testable platform. Kept for its distinct
+    # public-domain lineage; revisit if the fixed-address link is repaired.
+    platforms = [ "x86_64-windows" ];
     maintainers = [ ];
   };
 }

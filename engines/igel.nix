@@ -67,6 +67,12 @@ stdenv.mkDerivation rec {
     substituteInPlace CMakeLists.txt \
       --replace-fail '-march=native' '-march=x86-64-v3' \
       --replace-fail '-Wall -Werror -O3' '-Wall -O3'
+
+    # gen.cpp calls std::replace but includes only <chrono>/<thread>; newer gcc
+    # no longer pulls <algorithm> in transitively. Add it.
+    substituteInPlace src/gen.cpp \
+      --replace-fail '#include "gen.h"' '#include "gen.h"
+#include <algorithm>'
   '';
 
   # CMake builds out-of-tree in the Nix build dir; the `igel` executable lands

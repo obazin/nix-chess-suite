@@ -72,7 +72,7 @@ stdenv.mkDerivation rec {
     install -Dm644 "${zlib.static}/lib/libz.a" zlib/libz.a
     make compile \
       EXE=${pname} \
-      ARCH=armv8 \
+      ARCH=${if stdenv.hostPlatform.isAarch64 then "armv8" else "x86-64-avx2"} \
       CC="${stdenv.cc.targetPrefix}cc" \
       CXX="${stdenv.cc.targetPrefix}c++" \
       MYCC="${stdenv.cc.targetPrefix}cc"

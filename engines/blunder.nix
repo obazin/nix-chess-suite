@@ -56,7 +56,7 @@ buildGoModule rec {
                  printf 'isready\n';              sleep 0.6; \
                  printf 'ucinewgame\n';           sleep 0.6; \
                  printf 'position startpos\n';    sleep 0.6; \
-                 printf 'go depth 10\n';          sleep 5; \
+                 printf 'go movetime 3000\n';     sleep 8; \
                  printf 'quit\n';                 sleep 0.5; } \
                | timeout -s KILL 30 $emu "$bin" 2>/dev/null | tr -d '\r' || true)
 
@@ -64,7 +64,7 @@ buildGoModule rec {
       echo "FAIL: blunder did not answer 'uciok'" >&2; echo "$out_txt" >&2; exit 1
     }
     echo "$out_txt" | grep -q '^bestmove ' || {
-      echo "FAIL: blunder returned no bestmove from 'go depth 10'" >&2
+      echo "FAIL: blunder returned no bestmove from 'go movetime 3000'" >&2
       echo "$out_txt" >&2; exit 1
     }
     echo "ok: blunder speaks UCI and searches"
