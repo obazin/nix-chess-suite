@@ -1,0 +1,90 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  schedule:
+    # Weekly build against whatever nixpkgs-unstable has become. For the
+    # classic tier this is the point of CI: upstream never changes, but the
+    # toolchain does, and 2000s-era C breaks on new clang releases.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            system: x86_64-linux
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+          - runner: macos-14
+            system: aarch64-darwin
+    name: nix (${{ matrix.system }})
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      # Build engines individually so one broken engine does not mask the
+      # rest. `nix build .#default` would stop at the first failure.
+      - name: Build all engines
+        run: |
+          set -uo pipefail
+          engines=$(nix eval --raw --impure --expr \
+            'builtins.concatStringsSep "\n" (builtins.attrNames (builtins.getFlake (toString ./.)).packages.${builtins.currentSystem})')
+          failed=()
+          for e in $engines; do
+            [ "$e" = "default" ] && continue
+            echo "::group::$e"
+            if nix build ".#$e" --no-link --print-build-logs; then
+              echo "ok: $e"
+            else
+              echo "::error title=build failed::$e"
+              failed+=("$e")
+            fi
+            echo "::endgroup::"
+          done
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "Failed engines: ${failed[*]}"
+            exit 1
+          fi
+
+  windows:
+    # Windows is built natively rather than cross-compiled: too many of these
+    # Makefiles do not survive mingw cross-compilation.
+    name: windows (x86_64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            make
+            git
+            curl
+
+      - name: Build engines
+        run: ./ci/build-windows.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engines-windows-x86_64
+          path: dist/

@@ -1,0 +1,7 @@
+# Nix build symlinks
+result
+result-*
+# Direnv
+.direnv/
+# macOS
+.DS_Store

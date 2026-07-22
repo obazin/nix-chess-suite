@@ -1,0 +1,154 @@
+{ lib, stdenv, buildPackages }:
+
+# Generic builder for UCI chess engines.
+#
+# Most engines here are plain Makefile projects that predate any notion of
+# cross-compilation or non-x86 hardware. The recurring problems are:
+#   * hardcoded -march=/-msse*/-mpopcnt flags that break on aarch64
+#   * hardcoded CC=gcc, ignoring $CXX
+#   * no install target
+#   * NNUE nets fetched over the network at build time (sandbox-forbidden)
+#
+# mkEngine centralises the fixes so individual engine files stay small.
+
+{ pname
+, version
+, src
+, meta ? { }
+
+  # Subdirectory holding the Makefile, if not the source root.
+, sourceRoot ? null
+
+  # Make target and extra flags.
+, makeTarget ? null
+, makeFlags ? [ ]
+
+  # Name(s) of the binary produced by the build, relative to the build dir.
+  # The first is installed as `bin/${pname}`; the rest as-is.
+, binaries ? [ pname ]
+
+  # Strip x86-only codegen flags from Makefiles. Safe to leave on for aarch64;
+  # on x86_64 it costs a little speed but buys reproducibility across CPUs.
+  # Set to false for engines with a proper arch-detection target.
+, stripArchFlags ? true
+
+  # Extra data installed to $out/share/${pname} (books, personalities, nets).
+, dataFiles ? [ ]
+
+  # NNUE net pinned as a separate fetchurl. Copied into the source tree and
+  # exposed as $EVALFILE, which nearly every modern engine honours.
+, evalFile ? null
+, evalFileName ? null
+
+, nativeBuildInputs ? [ ]
+, buildInputs ? [ ]
+, ...
+}@args:
+
+let
+  # Flags that are meaningless or fatal outside x86_64.
+  archFlagPattern = lib.concatStringsSep "|" [
+    "-march=[a-z0-9._-]*"
+    "-mtune=[a-z0-9._-]*"
+    "-msse[0-9.a-z]*"
+    "-mpopcnt"
+    "-mavx[0-9a-z]*"
+    "-mbmi[0-9]*"
+    "-mssse3"
+    "-m64"
+    "-flto=[a-z0-9]*"
+  ];
+
+  passthruArgs = builtins.removeAttrs args [
+    "pname" "version" "src" "meta" "sourceRoot" "makeTarget" "makeFlags"
+    "binaries" "stripArchFlags" "dataFiles" "evalFile" "evalFileName"
+    "nativeBuildInputs" "buildInputs"
+  ];
+in
+stdenv.mkDerivation (passthruArgs // {
+  inherit pname version src nativeBuildInputs buildInputs;
+} // lib.optionalAttrs (sourceRoot != null) {
+  inherit sourceRoot;
+} // {
+
+  # Pin the net into the tree before the build can try to curl it.
+  # evalFileName may include a subdirectory (e.g. weights/net.bin), so create
+  # the parent — a flat `cp` into a non-existent dir would fail.
+  postUnpack = lib.optionalString (evalFile != null) ''
+    mkdir -p "$sourceRoot/$(dirname "${evalFileName}")"
+    cp ${evalFile} "$sourceRoot/${evalFileName}"
+  '' + (args.postUnpack or "");
+
+  postPatch = ''
+    # The unpacked Nix source is read-only. Several engines' Makefiles write
+    # objects into sibling dirs (e.g. build/ into ../src), which then fails
+    # with EACCES. Make the whole extracted tree writable up front.
+    chmod -R u+w . 2>/dev/null || true
+  '' + lib.optionalString stripArchFlags ''
+    echo "mkEngine: stripping x86-only codegen flags from makefiles"
+    for mk in Makefile makefile GNUmakefile Makefile.* *.mk make.sh; do
+      [ -f "$mk" ] || continue
+      sed -i -E 's/(${archFlagPattern})//g' "$mk"
+    done
+  '' + ''
+    # Respect the Nix toolchain rather than a hardcoded gcc. targetPrefix is
+    # what makes the mingw cross-build work.
+    export CC="${stdenv.cc.targetPrefix}cc"
+    export CXX="${stdenv.cc.targetPrefix}c++"
+  '' + (args.postPatch or "");
+
+  makeFlags = makeFlags
+    ++ lib.optional (makeTarget != null) makeTarget
+    ++ [
+      "CC=${stdenv.cc.targetPrefix}cc"
+      "CXX=${stdenv.cc.targetPrefix}c++"
+    ]
+    ++ lib.optional (evalFile != null) "EVALFILE=${evalFileName}";
+
+  # Almost none of these engines ship an install target.
+  installPhase = args.installPhase or ''
+    runHook preInstall
+    mkdir -p "$out/bin"
+    ${lib.concatMapStringsSep "\n" (b: ''
+      install -Dm755 "${b}" "$out/bin/$(basename "${b}")${stdenv.hostPlatform.extensions.executable}"
+    '') binaries}
+    ${lib.optionalString (binaries != [ ] && builtins.head binaries != pname) ''
+      ln -sf "$out/bin/$(basename "${builtins.head binaries}")${stdenv.hostPlatform.extensions.executable}" \
+             "$out/bin/${pname}${stdenv.hostPlatform.extensions.executable}"
+    ''}
+    ${lib.optionalString (dataFiles != [ ]) ''
+      mkdir -p "$out/share/${pname}"
+      ${lib.concatMapStringsSep "\n" (f: ''cp -r "${f}" "$out/share/${pname}/"'') dataFiles}
+    ''}
+    runHook postInstall
+  '';
+
+  # Smoke-test the UCI handshake. This catches the common failure where an
+  # engine builds but crashes instantly on a missing net or data file.
+  #
+  # Cross-built Windows binaries run under Wine when available; note that
+  # Wine emits CRLF, hence the tr.
+  doInstallCheck = args.doInstallCheck or
+    (stdenv.hostPlatform.emulatorAvailable buildPackages);
+
+  installCheckPhase = args.installCheckPhase or ''
+    runHook preInstallCheck
+    emu="${stdenv.hostPlatform.emulator buildPackages}"
+    out_txt=$(printf 'uci\nquit\n' | $emu "$out/bin/${pname}${stdenv.hostPlatform.extensions.executable}" | tr -d '\r')
+    echo "$out_txt" | grep -q uciok || {
+      echo "FAIL: ${pname} did not answer 'uciok' to a uci handshake" >&2
+      echo "--- engine output ---" >&2
+      echo "$out_txt" >&2
+      exit 1
+    }
+    echo "ok: ${pname} speaks UCI"
+    runHook postInstallCheck
+  '';
+
+  enableParallelBuilding = args.enableParallelBuilding or true;
+
+  meta = {
+    mainProgram = pname;
+    platforms = lib.platforms.unix ++ lib.platforms.windows;
+  } // meta;
+})

@@ -1,0 +1,70 @@
+name: update
+
+# Split update policy, because the two tiers age very differently.
+#
+#   strong   - Stockfish et al. move constantly and their NNUE nets rotate
+#              every few weeks. Worth chasing nightly.
+#   classic  - frozen upstream, often for over a decade. Sweeping these
+#              nightly produces nothing but no-op noise; they are covered
+#              by the weekly toolchain-drift build in build.yml instead.
+#
+# Updates land as PRs, never direct pushes. A green build is necessary but
+# not sufficient: an engine can build fine and play badly with a wrong net.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: Which tier to update
+        type: choice
+        default: strong
+        options: [ strong, classic, all ]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Update nixpkgs input
+        run: nix flake update
+
+      - name: Bump engines
+        id: bump
+        run: |
+          tier="${{ github.event.inputs.tier || 'strong' }}"
+          nix run .#update -- --tier "$tier" | tee /tmp/bumped.txt
+          echo "summary<<EOF" >> "$GITHUB_OUTPUT"
+          cat /tmp/bumped.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the bumps actually build
+        run: nix build .#default --print-build-logs
+
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          branch: automated/engine-updates
+          title: 'engines: automated update'
+          commit-message: 'engines: automated update'
+          delete-branch: true
+          body: |
+            Automated engine and net bumps.
+
+            ```
+            ${{ steps.bump.outputs.summary }}
+            ```
+
+            Built green on `x86_64-linux`. The full platform matrix runs on
+            this PR; check it before merging.
+
+            A green build does not prove correctness — an engine can compile
+            and still play at the wrong strength if a net pin is wrong.
