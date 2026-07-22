@@ -1,0 +1,35 @@
+MIT License
+
+Copyright (c) 2026 Olivier Bazin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Scope of this licence
+
+This MIT licence applies to the *packaging* in this repository — the Nix
+expressions, build scripts, CI workflows, and documentation authored here.
+
+It does NOT relicense the chess engines themselves. Each engine's source is
+fetched from its own upstream at build time and remains under that upstream's
+own licence (GPL-2.0/3.0, AGPL-3.0, MIT, BSD, Zlib, Apache-2.0, etc.). Those
+licences, and their obligations, are unaffected by this file. See each
+`engines/<name>.nix` for the per-engine licence and `docs/excluded.md` for the
+licensing determinations behind what is and isn't included.
