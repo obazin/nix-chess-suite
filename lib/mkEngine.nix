@@ -1,4 +1,4 @@
-{ lib, stdenv, buildPackages }:
+{ lib, stdenv, buildPackages, windows }:
 
 # Generic builder for UCI chess engines.
 #
@@ -66,7 +66,12 @@ let
   ];
 in
 stdenv.mkDerivation (passthruArgs // {
-  inherit pname version src nativeBuildInputs buildInputs;
+  inherit pname version src nativeBuildInputs;
+  # On a mingw (Windows) cross, POSIX threads come from winpthreads: it supplies
+  # <pthread.h> and libpthread so the many engines that `#include <pthread.h>`
+  # and link -lpthread build unchanged.
+  buildInputs = buildInputs
+    ++ lib.optional stdenv.hostPlatform.isWindows windows.pthreads;
 } // lib.optionalAttrs (sourceRoot != null) {
   inherit sourceRoot;
 } // {
@@ -89,6 +94,14 @@ stdenv.mkDerivation (passthruArgs // {
     for mk in Makefile makefile GNUmakefile Makefile.* *.mk make.sh; do
       [ -f "$mk" ] || continue
       sed -i -E 's/(${archFlagPattern})//g' "$mk"
+    done
+  '' + lib.optionalString stdenv.hostPlatform.isWindows ''
+    echo "mkEngine: stripping Linux-only link libs (-lrt/-ldl) for the mingw build"
+    for mk in Makefile makefile GNUmakefile Makefile.* *.mk make.sh; do
+      [ -f "$mk" ] || continue
+      # librt (clock/timers) and libdl (dlopen) are folded into the Windows CRT
+      # / not applicable; the tokens just make the mingw linker fail.
+      sed -i -E 's/ -l(rt|dl)\b//g' "$mk"
     done
   '' + ''
     # Respect the Nix toolchain rather than a hardcoded gcc. targetPrefix is

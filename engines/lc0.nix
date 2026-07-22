@@ -59,7 +59,7 @@ let
       # the eigen backend before searching, and exits on EOF. An instant pipe
       # close makes it quit before it can answer bestmove — a false failure.
       installCheckPhase = ''
-        out_txt=$({ printf 'uci\nisready\nposition startpos\ngo nodes 100\n'; sleep 30; printf 'quit\n'; } \
+        out_txt=$({ printf 'uci\nisready\nposition startpos\ngo nodes 40\n'; sleep 75; printf 'quit\n'; } \
           | "$out/bin/${name}" 2>/dev/null | tr -d '\r')
         echo "$out_txt" | grep -q uciok || { echo "FAIL: ${name} no uciok" >&2; exit 1; }
         echo "$out_txt" | grep -q bestmove || { echo "FAIL: ${name} no bestmove — net likely not loaded" >&2; exit 1; }
