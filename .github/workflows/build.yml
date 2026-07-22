@@ -42,18 +42,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/flakehub-cache-action@main
 
       # Build engines individually so one broken engine does not mask the
       # rest. `nix build .#default` would stop at the first failure.
       - name: Build all engines
         run: |
           set -uo pipefail
+          # Iterate the `checks` output: it is already filtered to engines
+          # whose meta.platforms includes this system, so platform-gated
+          # engines (e.g. the x86-only ones on aarch64) are not attempted here.
           engines=$(nix eval --raw --impure --expr \
-            'builtins.concatStringsSep "\n" (builtins.attrNames (builtins.getFlake (toString ./.)).packages.${builtins.currentSystem})')
+            'builtins.concatStringsSep "\n" (builtins.attrNames (builtins.getFlake (toString ./.)).checks.${builtins.currentSystem})')
           failed=()
           for e in $engines; do
-            [ "$e" = "default" ] && continue
             echo "::group::$e"
             if nix build ".#$e" --no-link --print-build-logs; then
               echo "ok: $e"
