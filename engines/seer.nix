@@ -1,4 +1,4 @@
-{ lib, mkEngine, fetchFromGitHub, fetchurl, llvmPackages }:
+{ lib, stdenv, mkEngine, fetchFromGitHub, fetchurl, llvmPackages }:
 
 let
   # Seer's default net is weights/q0x35ddef41.bin, which is NOT in the repo;
@@ -58,8 +58,14 @@ mkEngine rec {
     # Upstream uses GCC's -fconstexpr-ops-limit to raise the constexpr budget
     # for the compile-time-generated attack tables. clang spells the same knob
     # -fconstexpr-steps; without the rename clang errors on the unknown flag.
-    substituteInPlace makefile \
-      --replace-fail '-fconstexpr-ops-limit=' '-fconstexpr-steps='
+    # The makefile's constexpr budget flag is gcc's `-fconstexpr-ops-limit=`.
+    # clang spells it `-fconstexpr-steps=`, so translate it ONLY when building
+    # with clang (darwin); on gcc (linux) the original flag is correct and the
+    # clang spelling would be rejected outright.
+    ${lib.optionalString stdenv.cc.isClang ''
+      substituteInPlace makefile \
+        --replace-fail '-fconstexpr-ops-limit=' '-fconstexpr-steps='
+    ''}
 
     # nnue/simd.h includes <x86intrin.h> unconditionally, which does not exist
     # on aarch64. The SIMD code paths are all guarded by `#if defined(__AVX2__)`

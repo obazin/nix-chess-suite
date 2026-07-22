@@ -31,6 +31,10 @@ mkEngine rec {
     substituteInPlace Makefile --replace-fail 'mkdir $(OBJ_DIR)' 'mkdir -p $(OBJ_DIR)'
   '';
 
+  # option.h uses std::string without including <string>; gcc/libstdc++ (linux)
+  # does not pull it in transitively the way clang/libc++ (darwin) does.
+  env.NIX_CXXFLAGS_COMPILE = "-include string -include cstdint";
+
   meta = with lib; {
     description = "Shallow Blue, a small didactic UCI engine by Rhys Rustad-Elliott (~1900 Elo)";
     homepage = "https://github.com/GunshipPenguin/shallow-blue";

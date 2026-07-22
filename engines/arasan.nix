@@ -1,4 +1,4 @@
-{ lib, stdenv, buildPackages, mkEngine, fetchFromGitHub, bc, gawk }:
+{ lib, stdenv, buildPackages, mkEngine, fetchFromGitHub, bc, gawk, git, which }:
 
 let
   # src/syzygy is a git submodule (jdart1/Fathom) that the release tarball does
@@ -33,7 +33,9 @@ mkEngine rec {
   # bc + gawk are invoked only on the GCC code path (Linux) to gate the compiler
   # version; the Darwin build takes the clang branch and needs neither. Harmless
   # to always provide, and keeps the x86_64-linux build honest.
-  nativeBuildInputs = [ bc gawk ];
+  # git + which: the Makefile shells out to both to derive a version string.
+  # They happen to be on PATH on the macOS runner but not in the Linux sandbox.
+  nativeBuildInputs = [ bc gawk git which ];
 
   # Arasan has real per-arch BUILD_TYPEs, so mkEngine's blanket flag-strip would
   # only corrupt its x86 branches. On aarch64 the "neon" type emits -DSIMD

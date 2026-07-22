@@ -53,7 +53,7 @@ mkEngine rec {
   buildPhase = ''
     runHook preBuild
     $CXX -O3 -DNDEBUG -std=gnu++17 -funroll-loops -ffast-math -flto \
-      -D VERS='"${version}"' -Wno-unused-result \
+      -D VERS='"${version}"' -Wno-unused-result -Wno-narrowing \
       src/Leaf.cc -o exchess -pthread
     runHook postBuild
   '';

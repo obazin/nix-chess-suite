@@ -50,6 +50,11 @@ mkEngine rec {
       --replace-fail 'g++ ''${SOURCES}' '$(CXX) ''${SOURCES}'
   '';
 
+  # defs.h uses uint64_t but relies on it being pulled in transitively — true
+  # for clang/libc++ (darwin) but not gcc/libstdc++ (linux). Force <cstdint>
+  # into every TU; harmless where it is already visible.
+  env.NIX_CXXFLAGS_COMPILE = "-include cstdint";
+
   meta = with lib; {
     description = "Loki, Niels Abildskov's from-scratch C++17 UCI engine (classical hand-crafted evaluation, net-free)";
     homepage = "https://github.com/BimmerBass/Loki";

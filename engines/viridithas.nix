@@ -1208,6 +1208,14 @@ rustPlatform.buildRustPackage rec {
   # binary — the UCI smoke test below is the real acceptance check.
   doCheck = false;
 
+  # Viridithas's aarch64 NNUE path uses the dotprod (sdot/udot) instructions.
+  # They are baseline on Apple Silicon but not on the generic aarch64-linux
+  # target, where the build fails with "instruction requires: dotprod". Enable
+  # the feature on aarch64 (every ARMv8.2-A+ server core, incl. the CI runner,
+  # has it). Harmless/ignored on x86_64.
+  env.RUSTFLAGS = lib.optionalString stdenv.hostPlatform.isAarch64
+    "-C target-feature=+dotprod";
+
   doInstallCheck = stdenv.hostPlatform.emulatorAvailable buildPackages;
 
   # Same guarantee as mkEngine, plus an actual search: handshake to uciok, then

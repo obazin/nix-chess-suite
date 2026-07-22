@@ -41,7 +41,22 @@ mkEngine rec {
   # the link fails with "duplicate symbol". Upstream was written against the old
   # -fcommon default; restore it. (This is the whole build's C flag channel, so
   # it also reaches the fathom prober compiled in the same invocation.)
-  env.NIX_CFLAGS_COMPILE = "-fcommon";
+  # -fcommon: xiphos declares globals as bare tentative definitions in headers;
+  #   modern -fno-common defaults would make each TU emit its own and the link
+  #   fails with duplicate symbols. Restore the old -fcommon the code assumes.
+  # -Wno-error=incompatible-pointer-types: gcc 14+ promotes this to an error;
+  #   uci.c passes a slightly-mistyped thread routine to pthread_create. It is
+  #   ABI-compatible in practice, so downgrade it back to a warning.
+  env.NIX_CFLAGS_COMPILE = "-fcommon -Wno-error=incompatible-pointer-types";
+
+  postPatch = ''
+    # util.h declares `void print_board();`. gcc 15 defaults to C23, where empty
+    # parens mean `(void)`, so the real call `print_board(pos)` in uci.c errors
+    # with "too many arguments; expected 0". Give the prototype its actual
+    # parameter (the definition in util.c is `void print_board(position_t *)`).
+    substituteInPlace src/util.h \
+      --replace-fail 'void print_board();' 'void print_board(position_t *pos);'
+  '';
 
   # uci.c calls a printf wrapper as `_p(pv_string)` with a non-literal format.
   # nixpkgs' stdenv turns on `-Werror=format-security` by default (the "format"

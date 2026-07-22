@@ -4,7 +4,7 @@
 # This is a plain stdenv.mkDerivation driving the Nim compiler. The meta fields
 # and the UCI smoke test below mirror lib/mkEngine.nix so the engine is held to
 # the same standard as the rest of the collection.
-{ lib, stdenv, buildPackages, fetchFromGitHub, fetchurl, nim, zlib, mkEngine ? null }:
+{ lib, stdenv, buildPackages, fetchFromGitHub, fetchurl, nim, zlib, clang, mkEngine ? null }:
 
 # Heimdall is nocturn9x's NNUE UCI engine written in Nim. Two things make it the
 # awkward one to package hermetically, and both are handled here without any
@@ -98,7 +98,10 @@ stdenv.mkDerivation rec {
     hash = "sha256-JdYOjCJWl59rroC+oeu8a3y+5jcEAL9zedP3ffxCv/Q=";
   };
 
-  nativeBuildInputs = [ nim ];
+  # The Makefile invokes Nim with CC=clang (nim then spawns `clang` for its C
+  # backend). Darwin's stdenv cc *is* clang, so it's already on PATH there; on
+  # Linux (gcc stdenv) clang is absent, so add it explicitly.
+  nativeBuildInputs = [ nim ] ++ lib.optional stdenv.hostPlatform.isLinux clang;
   # zlib: the terminal-UI module (src/heimdall/tui/util/kitty.nim) FFIs into
   # zlib for the kitty image protocol (`{.passl: "-lz".}`, `#include <zlib.h>`).
   # The stdenv cc wrapper supplies the header and link path from this input.

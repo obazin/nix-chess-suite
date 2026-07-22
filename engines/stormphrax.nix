@@ -1,4 +1,4 @@
-{ lib, stdenv, buildPackages, mkEngine, fetchFromGitHub, fetchurl }:
+{ lib, stdenv, buildPackages, mkEngine, fetchFromGitHub, fetchurl, clang }:
 
 let
   # Stormphrax picks its net by name from network.txt ("undertown"); the top
@@ -50,6 +50,20 @@ mkEngine rec {
   # CC=cc/CXX=c++ satisfy that on Darwin.
   makeFlags = [ "EXE=stormphrax" ];
   binaries = [ "stormphrax" ];
+
+  # build.mk hard-errors unless the compiler's --version says "clang". Darwin's
+  # stdenv cc already is clang; the Linux stdenv is gcc, which trips the check
+  # (and the tab-indented $(error) even manifests as a Make parse error). On
+  # Linux, provide clang and force build.mk to use it via `override` (which
+  # beats the CC=/CXX= mkEngine passes on the command line).
+  nativeBuildInputs = lib.optional stdenv.hostPlatform.isLinux clang;
+
+  postPatch = lib.optionalString stdenv.hostPlatform.isLinux ''
+    substituteInPlace build.mk \
+      --replace-fail 'LDFLAGS :=' 'override CC := clang
+override CXX := clang++
+LDFLAGS :='
+  '';
 
   installCheckPhase = ''
     runHook preInstallCheck

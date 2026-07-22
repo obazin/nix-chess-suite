@@ -39,6 +39,18 @@ buildGoModule rec {
   postPatch = ''
     sed -i -e '/golang.org\/x\/sys/d' go.mod
 
+    # transposition/new_transtable_linux.go (build tag `linux`) is the only
+    # thing that imports golang.org/x/sys — it uses hugepages via mmap. On
+    # Linux it, not the dependency-free new_transtable.go (tag `!linux`), would
+    # be compiled, reintroducing the x/sys import we just dropped. Force the
+    # portable variant everywhere: delete the Linux file and lift the `!linux`
+    # tag so new_transtable.go builds on all platforms. Only effect is that the
+    # Linux build forgoes explicit hugepage allocation (transparent hugepages
+    # still apply); play is identical.
+    rm transposition/new_transtable_linux.go
+    sed -i -e '\#// +build !linux#d' -e '\#//go:build !linux#d' \
+      transposition/new_transtable.go
+
     # Bundled Fathom: tbprobe.c does `#include "tbchess.c"`, so tbchess.c is not
     # a standalone unit — its (all-static) helpers reference popcount/lsb/poplsb
     # that are only defined once tbprobe.c has included it. cgo nonetheless

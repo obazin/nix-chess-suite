@@ -49,6 +49,11 @@ mkEngine rec {
     # `strip` on the freshly built binary breaks the Nix fixup phase's own
     # stripping on Darwin and gains us nothing (fixupPhase strips anyway).
     substituteInPlace Makefile --replace-fail '$(STRIP) $(EXE)' 'true'
+
+    # The Makefile links with a bare `-lpthread`, which the GNU linker in the
+    # Linux sandbox cannot resolve (glibc folds pthread into libc). `-pthread`
+    # lets the compiler driver handle threading correctly on both platforms.
+    sed -i 's/-lpthread/-pthread/g' Makefile
   '';
 
   meta = with lib; {
