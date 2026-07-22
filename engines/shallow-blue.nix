@@ -29,11 +29,14 @@ mkEngine rec {
     # The Makefile does `mkdir obj` unconditionally via the $(OBJ_DIR) rule,
     # which fails if a stale dir exists. Make it idempotent.
     substituteInPlace Makefile --replace-fail 'mkdir $(OBJ_DIR)' 'mkdir -p $(OBJ_DIR)'
-  '';
 
-  # option.h uses std::string without including <string>; gcc/libstdc++ (linux)
-  # does not pull it in transitively the way clang/libc++ (darwin) does.
-  env.NIX_CXXFLAGS_COMPILE = "-include string -include cstdint";
+    # option.h uses std::string with only <map> included; gcc/libstdc++ (linux)
+    # does not pull <string> in transitively the way clang/libc++ (darwin) does.
+    substituteInPlace src/option.h \
+      --replace-fail '#include <map>' '#include <map>
+#include <string>
+#include <cstdint>'
+  '';
 
   meta = with lib; {
     description = "Shallow Blue, a small didactic UCI engine by Rhys Rustad-Elliott (~1900 Elo)";

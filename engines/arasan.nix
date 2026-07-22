@@ -1,4 +1,4 @@
-{ lib, stdenv, buildPackages, mkEngine, fetchFromGitHub, bc, gawk, git, which }:
+{ lib, stdenv, buildPackages, mkEngine, fetchFromGitHub, bc, gawk, git, which, clang }:
 
 let
   # src/syzygy is a git submodule (jdart1/Fathom) that the release tarball does
@@ -35,7 +35,12 @@ mkEngine rec {
   # to always provide, and keeps the x86_64-linux build honest.
   # git + which: the Makefile shells out to both to derive a version string.
   # They happen to be on PATH on the macOS runner but not in the Linux sandbox.
-  nativeBuildInputs = [ bc gawk git which ];
+  # clang (aarch64-linux only): Arasan's NEON SIMD returns a uint8x16_t where an
+  # int8x16_t is expected; clang accepts the vector-signedness mismatch, gcc
+  # rejects it. Darwin already uses clang; x86_64-linux uses the SSE path (no
+  # NEON), so only the aarch64-linux/gcc combination needs it.
+  nativeBuildInputs = [ bc gawk git which ]
+    ++ lib.optional (stdenv.hostPlatform.isAarch64 && stdenv.hostPlatform.isLinux) clang;
 
   # Arasan has real per-arch BUILD_TYPEs, so mkEngine's blanket flag-strip would
   # only corrupt its x86 branches. On aarch64 the "neon" type emits -DSIMD
@@ -62,6 +67,13 @@ mkEngine rec {
     substituteInPlace Makefile \
       --replace-fail 'CPP     := $(CC)' 'CPP     := $(CXX)' \
       --replace-fail 'LD      := $(CC)' 'LD      := $(CXX)'
+
+    # On aarch64-linux, compile/link with clang++ (see nativeBuildInputs note).
+    ${lib.optionalString (stdenv.hostPlatform.isAarch64 && stdenv.hostPlatform.isLinux) ''
+      substituteInPlace Makefile \
+        --replace-fail 'CPP     := $(CXX)' 'CPP     := clang++' \
+        --replace-fail 'LD      := $(CXX)' 'LD      := clang++'
+    ''}
 
     # Vendor the Fathom (Syzygy prober) submodule the tarball omits. The
     # Makefile expects it at $(STB)=syzygy/src and compiles tbprobe.c (which

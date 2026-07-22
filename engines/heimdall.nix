@@ -156,6 +156,15 @@ stdenv.mkDerivation rec {
     substituteInPlace Makefile \
       --replace-fail ' --passL:"$(LFLAGS)"' "" \
       --replace-fail ' --passC:"$(CFLAGS_LEGACY)"' ""
+
+    # NUMA autodetection reads /sys/devices/system/{cpu,node}/... at startup.
+    # readTrimmed catches OSError, but Nim's readFile raises IOError (not an
+    # OSError subtype) when the path is absent — as it is in the build sandbox
+    # (and any /sys-less environment) — so the engine aborts on the first `go`.
+    # Broaden the catch to CatchableError so the missing file yields `none` and
+    # NUMA detection degrades gracefully.
+    substituteInPlace src/heimdall/util/numa.nim \
+      --replace-fail 'except OSError:' 'except CatchableError:'
   '';
 
   # Nim needs a writable HOME and cache in the sandbox. SKIP_DEPS=1 stops the

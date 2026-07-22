@@ -48,12 +48,13 @@ mkEngine rec {
     # clang c++ driver (and any cross toolchain) is honoured.
     substituteInPlace makefile \
       --replace-fail 'g++ ''${SOURCES}' '$(CXX) ''${SOURCES}'
-  '';
 
-  # defs.h uses uint64_t but relies on it being pulled in transitively — true
-  # for clang/libc++ (darwin) but not gcc/libstdc++ (linux). Force <cstdint>
-  # into every TU; harmless where it is already visible.
-  env.NIX_CXXFLAGS_COMPILE = "-include cstdint";
+    # defs.h uses uint64_t but includes only <iostream>/<assert.h>; clang/libc++
+    # (darwin) pulls <cstdint> in transitively, gcc/libstdc++ (linux) does not.
+    substituteInPlace Loki/defs.h \
+      --replace-fail '#include <iostream>' '#include <iostream>
+#include <cstdint>'
+  '';
 
   meta = with lib; {
     description = "Loki, Niels Abildskov's from-scratch C++17 UCI engine (classical hand-crafted evaluation, net-free)";

@@ -54,6 +54,15 @@ mkEngine rec {
     # Linux sandbox cannot resolve (glibc folds pthread into libc). `-pthread`
     # lets the compiler driver handle threading correctly on both platforms.
     sed -i 's/-lpthread/-pthread/g' Makefile
+
+    # The ARM/generic link targets pass `-static` / `-static-libgcc` /
+    # `-static-libstdc++`. Full static linking needs static libm/libc, which
+    # nixpkgs' default glibc does not ship ("cannot find -lm"). Drop the static
+    # flags on Linux; a normal dynamic link is what Nix expects anyway.
+    ${lib.optionalString stdenv.hostPlatform.isLinux ''
+      sed -i -e 's/-static-libstdc++//g' -e 's/-static-libgcc//g' \
+             -e 's/ -static / /g' -e 's/ -static$/ /g' Makefile
+    ''}
   '';
 
   meta = with lib; {

@@ -63,6 +63,9 @@ mkEngine rec {
       --replace-fail 'LDFLAGS :=' 'override CC := clang
 override CXX := clang++
 LDFLAGS :='
+    # build.mk asks clang for the lld linker; lld isn't in this toolchain, and
+    # the default (bfd) links fine. Drop the flag rather than pull in lld.
+    substituteInPlace build.mk --replace-quiet '-fuse-ld=lld' ""
   '';
 
   installCheckPhase = ''

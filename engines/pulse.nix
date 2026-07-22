@@ -46,11 +46,13 @@ mkEngine rec {
     # mkEngine's smoke test agree on a path.
     substituteInPlace src/main/cpp/CMakeLists.txt \
       --replace-fail 'set_target_properties(pulse PROPERTIES OUTPUT_NAME "pulse-cpp-''${PLATFORM_SUFFIX}-''${pulse_VERSION}")' ""
-  '';
 
-  # protocol.h uses uint64_t without including <cstdint>; gcc/libstdc++ (linux)
-  # does not pull it in transitively the way clang/libc++ (darwin) does.
-  env.NIX_CXXFLAGS_COMPILE = "-include cstdint";
+    # protocol.h uses uint64_t without including <cstdint>; gcc/libstdc++ (linux)
+    # does not pull it in transitively the way clang/libc++ (darwin) does.
+    substituteInPlace src/main/cpp/protocol.h \
+      --replace-fail '#define PULSE_PROTOCOL_H' '#define PULSE_PROTOCOL_H
+#include <cstdint>'
+  '';
 
   # CMake builds out-of-tree in ./build, so mkEngine's default installPhase
   # (which expects binaries relative to the source root) does not apply.
