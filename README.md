@@ -99,6 +99,8 @@ The 1800-2400 band is thinly populated in modern open-source engines: almost eve
 
 ## Licensing policy
 
+This repository's own packaging — the Nix expressions, CI workflows, and documentation — is released under the [MIT License](LICENSE). That licence does **not** relicense the engines: each engine's source is fetched from its own upstream at build time and remains under that upstream's licence (GPL-2.0/3.0, AGPL-3.0, MIT, BSD, Zlib, Apache-2.0, …), with those obligations unaffected. See each `engines/<name>.nix` for the per-engine licence.
+
 Only engines with a **verified redistributable licence** are included. Every entry was checked against primary evidence — an upstream `LICENSE` file or an explicit statement by the author — not against secondary sources like the Chessprogramming wiki.
 
 Notable exclusions are documented in [`docs/excluded.md`](docs/excluded.md). In brief: **Hiarcs** and **Komodo** are commercial; **Critter**, **Roce**, **Bikjump** and **Saruman** are binary-only freeware with no source release; **Daydreamer**, **Integral** and **Motor** are publicly readable on GitHub but carry *no licence grant at all*, which is not the same as open source; **Nalwald** is Creative-Commons non-commercial (not free software); and **Ethereal** is GPLv3 in source but its NNUE net is sold separately, so a source build cannot reach anything near its rated strength.

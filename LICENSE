@@ -19,17 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Scope of this licence
-
-This MIT licence applies to the *packaging* in this repository — the Nix
-expressions, build scripts, CI workflows, and documentation authored here.
-
-It does NOT relicense the chess engines themselves. Each engine's source is
-fetched from its own upstream at build time and remains under that upstream's
-own licence (GPL-2.0/3.0, AGPL-3.0, MIT, BSD, Zlib, Apache-2.0, etc.). Those
-licences, and their obligations, are unaffected by this file. See each
-`engines/<name>.nix` for the per-engine licence and `docs/excluded.md` for the
-licensing determinations behind what is and isn't included.
