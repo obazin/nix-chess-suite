@@ -6,7 +6,7 @@ The engine set is seeded from the [Lucas Chess](https://github.com/lukasmonk/luc
 
 **8 languages**: C, C++, Rust, Go, C#, Nim, Zig, D. **Three eval paradigms**: NNUE, classical hand-crafted, and Winter's logistic-regression evaluation. Every engine is built from source with a pinned revision (and, where applicable, a pinned NNUE net), and is smoke-tested in-sandbox — the build sends `uci` and a real `go`, and requires both `uciok` and a `bestmove` back, so an engine that compiles but can't play never ships.
 
-The authoritative engine list is `nix flake show` (or `engines/default.nix`); the tables below are a snapshot.
+The authoritative engine list is `nix flake show` (or `engines/default.nix`); the tables below are a snapshot. See **[Engines.md](Engines.md)** for the full catalogue — every engine with its approximate Elo, platforms, eval method, and source link.
 
 ### Languages
 
