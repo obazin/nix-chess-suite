@@ -63,15 +63,21 @@
             (name: drv: lib.nameValuePair "win-${name}"
               (drv.overrideAttrs (_: { doInstallCheck = false; doCheck = false; })))
             winBuildable;
+
+          # An installable bundle: every engine's bin/ merged into one, so
+          # `nix profile install` puts every engine on PATH at once (stockfish,
+          # fruit, lc0, maia-1500, …). Engine binary names are unique.
+          allEngines = pkgs.buildEnv {
+            name = "chess-engines-all";
+            paths = lib.attrValues buildable;
+            ignoreCollisions = true;
+          };
         in
         engines
         // lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") winPackages
         // {
-          # Everything that builds on this system, for CI to hammer at once.
-          default = pkgs.linkFarm "chess-engines" (
-            lib.mapAttrsToList (name: drv: { inherit name; path = drv; })
-              buildable
-          );
+          all = allEngines;
+          default = allEngines;
         });
 
       # Only the engines buildable on each system — evaluating an x86-gated

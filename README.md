@@ -22,15 +22,82 @@ The authoritative engine list is `nix flake show` (or `engines/default.nix`); th
 
 \* Stormphrax is C++. † x86-only, platform-gated (see below). Plus **Lc0** (+ a distilled CPU net) and **Maia 1100–1900** as nine human-like engines.
 
-## Quick start
+## Installing
+
+### With Nix (macOS / Linux)
+
+Run one engine without installing anything:
 
 ```sh
-nix run github:obazin/nix-chess-suite#fruit      # run one engine
-nix build github:obazin/nix-chess-suite          # build everything for this system
-nix flake show github:obazin/nix-chess-suite     # list available engines
+nix run github:obazin/nix-chess-suite#stockfish
 ```
 
-Prebuilt binaries for all platforms are attached to each [release](../../releases).
+Install **one** engine into your profile (puts it on `PATH`):
+
+```sh
+nix profile install github:obazin/nix-chess-suite#maia-1500
+```
+
+Install **every** engine at once — the `all` bundle (== the default) merges all
+engines into one `bin/`, so `stockfish`, `fruit`, `lc0`, `maia-1500`, … all land
+on `PATH`:
+
+```sh
+nix profile install github:obazin/nix-chess-suite       # or: #all
+```
+
+List what's available for your system:
+
+```sh
+nix flake show github:obazin/nix-chess-suite
+```
+
+### In your own flake / NixOS / home-manager
+
+The flake ships `overlays.default`, which adds a `chessEngines` attrset:
+
+```nix
+{
+  inputs.chess.url = "github:obazin/nix-chess-suite";
+  # ...
+  # NixOS or home-manager module:
+  nixpkgs.overlays = [ inputs.chess.overlays.default ];
+  environment.systemPackages = [
+    pkgs.chessEngines.stockfish
+    pkgs.chessEngines.arasan
+  ];
+  # or grab everything:
+  # environment.systemPackages = [ inputs.chess.packages.${pkgs.system}.all ];
+}
+```
+
+Then point your GUI (cutechess, en-croissant, BanksiaGUI, Arena, …) at the
+installed binaries, e.g. `~/.nix-profile/bin/stockfish`.
+
+### Without Nix
+
+Nix-built Linux/macOS binaries link against libraries in `/nix/store`, so you
+can't just copy one to a non-Nix machine and run it. What works, per platform:
+
+- **Linux, no Nix** — run `nix bundle` *on a Linux machine* to turn any engine
+  into a self-contained, portable executable (an AppImage-style single file)
+  that then runs anywhere without Nix:
+
+  ```sh
+  nix bundle github:obazin/nix-chess-suite#stockfish   # -> ./stockfish (portable)
+  ```
+
+- **Windows** — the `.exe`s are mingw cross-builds that link against Windows
+  DLLs, so they're genuinely portable. They're attached to each
+  [release](../../releases) for the engines that support Windows (see the
+  platform table); keep the accompanying `lib*.dll`s next to them.
+
+- **macOS, no Nix** — macOS binaries embed `/nix/store` dylib paths and aren't
+  easily made portable; the realistic path is to install Nix (one command) and
+  use `nix profile install` above.
+
+For anyone who can install Nix, that's by far the simplest route on both Linux
+and macOS: every engine, reproducibly, with nothing dumped into the system.
 
 ## Platform support
 
