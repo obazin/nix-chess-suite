@@ -113,7 +113,7 @@ stdenv.mkDerivation (passthruArgs // {
     done
     # MSVC-oriented sources #include <Windows.h>; mingw's SDK header is the
     # lowercase <windows.h>, and the Nix store is case-sensitive, so normalise.
-    grep -rlZ '<Windows.h>' --include='*.c' --include='*.cpp' --include='*.h' . 2>/dev/null \
+    grep -rlZ '<Windows.h>' --include='*.c' --include='*.cc' --include='*.cpp' --include='*.cxx' --include='*.h' --include='*.hpp' --include='*.hh' --include='*.hxx' . 2>/dev/null \
       | xargs -0 -r sed -i 's/<Windows.h>/<windows.h>/g' || true
 
     # The Fruit lineage's Windows input-poll fast path peeks at stdin->_cnt, a

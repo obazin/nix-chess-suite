@@ -55,6 +55,10 @@ mkEngine rec {
   '';
 
   meta = with lib; {
+    # Gated off Windows: unlike the base Toga, DeepToga's tablebase probing
+    # uses POSIX dlopen/RTLD_LAZY (no LoadLibrary shim) and an unported HANDLE
+    # comparison. The rest of the Fruit lineage cross-compiles fine.
+    platforms = platforms.unix;
     description = "DeepToga 1.9.6 NPS, a multi-threaded Toga II derivative with node-rate throttling";
     homepage = "https://www.chessprogramming.org/Toga";
     # The distribution ships COPYING (GPLv2 text) and LICENSE, the latter
