@@ -98,7 +98,16 @@
             stockfish = false; berserk = false; obsidian = false;
             plentychess = false; caissa = false; rubichess = false;
             alexandria = false; clover = false; seer = false; stormphrax = false;
-            viridithas = true; reckless = true;
+            reckless = true;
+          }
+          # viridithas (Rust) builds with target-cpu=native on ARM, but on x86 its
+          # AVX512-VNNI intrinsics fail to compile under -C target-cpu=native on a
+          # CPU that has AVX512F but not VNNI (rustc-LLVM "cannot select
+          # vpdpbusd.512"). Offer its native variant only off x86, where that
+          # can't bite; reckless covers Rust-native on x86. The portable, cached
+          # viridithas is unaffected and available everywhere.
+          // lib.optionalAttrs (!pkgs.stdenv.hostPlatform.isx86_64) {
+            viridithas = true;
           };
 
           # Profile-guided optimisation, layered on top of `-march=native` for
