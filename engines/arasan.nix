@@ -77,6 +77,13 @@ extern "C" {
 extern "C" {
    #include <malloc.h>'
 
+    # The x86 build types add -fuse-ld=gold; the gold linker isn't in the mingw
+    # cross toolchain, so collect2 fails with "cannot find 'ld'". Default bfd
+    # links fine. (Windows only, to keep gold on Linux where it's present.)
+    ${lib.optionalString stdenv.hostPlatform.isWindows ''
+      substituteInPlace Makefile --replace-quiet '-fuse-ld=gold' ""
+    ''}
+
     # The Makefile compiles AND links C++ through $(CC) (CPP := $(CC), LD :=
     # $(CC)). mkEngine sets CC to the C driver and CXX to the C++ driver, so
     # route both through $(CXX); otherwise the C driver links without the C++

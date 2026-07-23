@@ -56,7 +56,7 @@ stdenv.mkDerivation rec {
   # CMake build dir.
   installPhase = ''
     runHook preInstall
-    install -Dm755 texel "$out/bin/texel${stdenv.hostPlatform.extensions.executable}"
+    install -Dm755 texel${stdenv.hostPlatform.extensions.executable} "$out/bin/texel${stdenv.hostPlatform.extensions.executable}"
     runHook postInstall
   '';
 
