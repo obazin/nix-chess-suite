@@ -65,6 +65,32 @@ extra-trusted-public-keys = nix-chess-suite-1:5uNzouWBsIpF0iwdnTgQj2A8ZSdvFFLfV5
 Without the cache, Nix would build all ~79 engines from source locally —
 correct, but slow.
 
+### Native (maximum-strength) variants
+
+The cached binaries are **portable**: built to a conservative baseline
+(AVX2/BMI2 on x86-64, NEON on ARM) so one binary runs on any CPU of that
+architecture. That costs a few percent versus a build tuned to *your* CPU.
+
+For the strong (3000+) tier, opt-in **`-native`** variants are built with
+`-march=native` (Rust engines with `target-cpu=native`), so they use everything
+your CPU has — AVX-512, specific tuning, etc. Because a native binary is only
+valid on the CPU that built it, these are **always built locally and never
+cached** (not pulled from or pushed to the shared cache):
+
+```sh
+# one native engine (compiles on your machine, ~a few minutes)
+nix profile install github:obazin/nix-chess-suite#stockfish-native
+
+# the whole strong tier, native
+nix profile install github:obazin/nix-chess-suite#native
+```
+
+Available: `stockfish-native`, `berserk-native`, `caissa-native`,
+`clover-native`, `seer-native`, `stormphrax-native`, `alexandria-native`,
+`plentychess-native`, `rubichess-native`, `obsidian-native` (x86), and the Rust
+`viridithas-native`, `reckless-native`. Use these for serious analysis or rating
+runs; the portable cached builds are the right default for casual/sparring use.
+
 ### In your own flake / NixOS / home-manager
 
 The flake ships `overlays.default`, which adds a `chessEngines` attrset:

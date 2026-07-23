@@ -84,12 +84,44 @@
             paths = lib.attrValues buildable;
             ignoreCollisions = true;
           };
+
+          # Native/opt-in variants of the strong tier: built with -march=native
+          # (or Rust target-cpu=native) for the CPU that builds them, instead of
+          # the portable cached baseline. A consumer opts in per engine
+          # (`#stockfish-native`) or with the `native` bundle. These are
+          # CPU-specific, so they are ALWAYS built locally and never pushed to /
+          # pulled from the shared cache (see lib/mkNative.nix). Not in `checks`,
+          # so CI never builds or caches them. lc0 is excluded (it is a wrapper
+          # around the nixpkgs meson build). Value is `isRust`.
+          mkNative = import ./lib/mkNative.nix;
+          strongTier = {
+            stockfish = false; berserk = false; obsidian = false;
+            plentychess = false; caissa = false; rubichess = false;
+            alexandria = false; clover = false; seer = false; stormphrax = false;
+            viridithas = true; reckless = true;
+          };
+          nativePackages = lib.mapAttrs'
+            (name: isRust: lib.nameValuePair "${name}-native"
+              (mkNative isRust engines.${name}))
+            strongTier;
+          # Only the native variants buildable on this system, for the bundle.
+          nativeBuildable = lib.filterAttrs
+            (_: drv: builtins.elem pkgs.stdenv.hostPlatform.system
+              (drv.meta.platforms or [ ]))
+            nativePackages;
+          nativeBundle = pkgs.buildEnv {
+            name = "chess-engines-native";
+            paths = lib.attrValues nativeBuildable;
+            ignoreCollisions = true;
+          };
         in
         engines
+        // nativePackages
         // lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") winPackages
         // {
           all = allEngines;
           default = allEngines;
+          native = nativeBundle;
         });
 
       # Only the engines buildable on each system — evaluating an x86-gated
