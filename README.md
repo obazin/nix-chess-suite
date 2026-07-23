@@ -88,8 +88,21 @@ nix profile install github:obazin/nix-chess-suite#native
 Available: `stockfish-native`, `berserk-native`, `caissa-native`,
 `clover-native`, `seer-native`, `stormphrax-native`, `alexandria-native`,
 `plentychess-native`, `rubichess-native`, `obsidian-native` (x86), and the Rust
-`viridithas-native`, `reckless-native`. Use these for serious analysis or rating
-runs; the portable cached builds are the right default for casual/sparring use.
+`reckless-native` (plus `viridithas-native` off x86 — its AVX-512-VNNI
+intrinsics don't compile under `target-cpu=native` on x86 CPUs without VNNI).
+Use these for serious analysis or rating runs; the portable cached builds are
+the right default for casual/sparring use.
+
+**PGO on top of native.** For the ultra-strong engines (≥3400) whose upstream
+build ships a profile-guided-optimisation pipeline, the `-native` variant also
+runs PGO — it builds the engine, runs its own `bench` to record a profile, then
+recompiles guided by that profile, for a further few percent on top of native
+codegen. This is active for **stockfish, berserk, plentychess, rubichess**
+(both GCC and Clang), **obsidian** (x86/GCC), and **seer** (GCC only — its
+Clang PGO path is broken upstream, so on macOS `seer-native` is native without
+PGO). Everything is validated on real x86-64/GCC by the non-blocking
+`native-smoke` CI job, which *builds* these variants (never caching them) so the
+GCC PGO paths — untestable on the aarch64-darwin reference machine — stay green.
 
 ### In your own flake / NixOS / home-manager
 
