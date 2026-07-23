@@ -115,12 +115,80 @@
           # With GCC (Linux) this needs no extra tools; with Clang (Darwin) the
           # pipeline shells out to `llvm-profdata` to merge the raw profile, so
           # put the matching llvm on PATH there.
+          # llvm-profdata (from the matching llvm) is on PATH only when the
+          # stdenv compiler is Clang (Darwin); GCC (Linux) merges .gcda inline
+          # and needs no extra tool. Reused by every clang-path PGO entry below.
+          llvmForClang = lib.optional pkgs.stdenv.cc.isClang pkgs.llvmPackages.llvm;
           pgoOverrides = {
+            # Stockfish: swap `build` for its `profile-build` PGO target.
             stockfish = old: {
               makeFlags = map (f: if f == "build" then "profile-build" else f)
                 old.makeFlags;
-              nativeBuildInputs = (old.nativeBuildInputs or [ ])
-                ++ lib.optional pkgs.stdenv.cc.isClang pkgs.llvmPackages.llvm;
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ llvmForClang;
+            };
+
+            # Berserk: its `pgo` target runs the full cycle, but the makefile
+            # selects the gcc/clang PGO path by substring-matching $(CC) — and
+            # mkEngine passes CC=cc, which matches neither ("PGO not supported").
+            # Rename CC/CXX to gcc/clang (the nix cc-wrapper provides both names
+            # and still honours mkNative's -march=native). On Darwin the clang
+            # path merges via `$(XCRUN) llvm-profdata`; xcrun isn't in the
+            # sandbox, so blank it (XCRUN=) to call llvm-profdata directly. The
+            # net is pinned in-tree, so `pgo: download-network` finds it and
+            # never curls. Bench (`./berserk bench 13`) uses the embedded net.
+            berserk = old: {
+              makeFlags = (map
+                (f:
+                  if f == "all" then "pgo"
+                  else if f == "CC=cc" then "CC=${if pkgs.stdenv.cc.isClang then "clang" else "gcc"}"
+                  else if f == "CXX=c++" then "CXX=${if pkgs.stdenv.cc.isClang then "clang++" else "g++"}"
+                  else f)
+                old.makeFlags)
+                ++ lib.optional pkgs.stdenv.cc.isClang "XCRUN=";
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ llvmForClang;
+            };
+
+            # PlentyChess: standalone derivation with a literal buildPhase (not
+            # mkEngine makeFlags), so retarget the make goal in the buildPhase
+            # string. `make all` -> `make profile-build` keeps the interpolated
+            # EXE=/CXX=/CC=/EVALFILE= args (net stays embedded, no download). The
+            # makefile gates its PGO flags on MAKECMDGOALS being exactly
+            # `profile-build`, and detects clang-vs-gcc from `$(CXX) --version`.
+            plentychess = old: {
+              buildPhase = builtins.replaceStrings
+                [ "make all" ] [ "make profile-build" ] old.buildPhase;
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ llvmForClang;
+            };
+
+            # RubiChess: standalone. The base build deliberately uses the plain
+            # `compile` target to avoid the mid-build bench run; for a native,
+            # local-only variant that run is exactly what we want, so switch to
+            # `profile-build`. Two extra needs: (1) the bench step loads the net
+            # from cwd, so drop the pinned net (from the already-built base
+            # engine) there — this also satisfies the `net` prerequisite so it
+            # never curls; (2) the PGO cycle runs `libclean`, which deletes the
+            # pre-placed nixpkgs libz.a and would force a rebuild of the bundled
+            # zlib (which no longer compiles against the macOS SDK) — patch
+            # libclean to keep the .a. COMP is chosen by uname, matching stdenv.
+            rubichess = old: {
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ llvmForClang;
+              postPatch = (old.postPatch or "") + ''
+                substituteInPlace Makefile \
+                  --replace-fail '$(RM) zlib/*.o zlib/*.a' '$(RM) zlib/*.o'
+              '';
+              buildPhase = ''
+                runHook preBuild
+                install -Dm644 "${pkgs.zlib.static}/lib/libz.a" zlib/libz.a
+                cp ${engines.rubichess}/bin/*.nnue .
+                make profile-build \
+                  EXE=rubichess \
+                  ARCH=${if pkgs.stdenv.hostPlatform.isAarch64 then "armv8" else "x86-64-avx2"} \
+                  COMP=${if pkgs.stdenv.cc.isClang then "clang" else "gcc"} \
+                  CC="${pkgs.stdenv.cc.targetPrefix}cc" \
+                  CXX="${pkgs.stdenv.cc.targetPrefix}c++" \
+                  MYCC="${pkgs.stdenv.cc.targetPrefix}cc"
+                runHook postBuild
+              '';
             };
           };
 
