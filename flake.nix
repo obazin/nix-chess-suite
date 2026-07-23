@@ -11,9 +11,9 @@
   # applies them automatically for a trusted user). Covers the three
   # CI-built systems: aarch64-darwin, x86_64-linux, aarch64-linux.
   nixConfig = {
-    extra-substituters = [ "https://nix-chess-suite.cachix.org" ];
+    extra-substituters = [ "https://pub-428250a0977d4667937b8ce7e16887ce.r2.dev" ];
     extra-trusted-public-keys = [
-      "nix-chess-suite.cachix.org-1:TMsUd9aoIz7tpCCs/Tiu2aDIpRParToEj9QxZAECO4Y="
+      "nix-chess-suite-1:5uNzouWBsIpF0iwdnTgQj2A8ZSdvFFLfV5kkiapqW9U="
     ];
   };
 

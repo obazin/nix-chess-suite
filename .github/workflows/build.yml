@@ -41,19 +41,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # R2 binary cache (pull): download prebuilt engine paths so runs don't
+      # rebuild all 79 from source. Public read via the r2.dev URL.
       - uses: DeterminateSystems/nix-installer-action@main
-
-      # Binary cache: pulls prebuilt engine paths so runs don't rebuild all 79
-      # from source (fast, and no CPU saturation that flakes smoke tests), and
-      # pushes newly-built paths for the next run. No-op without the secret.
-      - uses: cachix/cachix-action@v15
         with:
-          name: nix-chess-suite
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          extra-conf: |
+            extra-substituters = https://pub-428250a0977d4667937b8ce7e16887ce.r2.dev
+            extra-trusted-public-keys = nix-chess-suite-1:5uNzouWBsIpF0iwdnTgQj2A8ZSdvFFLfV5kkiapqW9U=
 
-      # Build engines individually so one broken engine does not mask the
-      # rest. `nix build .#default` would stop at the first failure.
+      # Build engines individually so one broken engine does not mask the rest,
+      # then sign + push the freshly-built paths to R2 for the next run and for
+      # consumers.
       - name: Build all engines
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          NIX_SIGNING_KEY: ${{ secrets.NIX_SIGNING_KEY }}
         run: |
           set -uo pipefail
           # Iterate the `checks` output: it is already filtered to engines
@@ -61,17 +64,21 @@ jobs:
           # engines (e.g. the x86-only ones on aarch64) are not attempted here.
           engines=$(nix eval --raw --impure --expr \
             'builtins.concatStringsSep "\n" (builtins.attrNames (builtins.getFlake (toString ./.)).checks.${builtins.currentSystem})')
+          built=()
           failed=()
           for e in $engines; do
             echo "::group::$e"
             if nix build ".#$e" --no-link --print-build-logs; then
               echo "ok: $e"
+              while IFS= read -r p; do [ -n "$p" ] && built+=("$p"); done \
+                < <(nix build ".#$e" --no-link --print-out-paths)
             else
               echo "::error title=build failed::$e"
               failed+=("$e")
             fi
             echo "::endgroup::"
           done
+          ./ci/r2-push.sh "${built[@]}" || echo "::warning::R2 push failed (non-fatal)"
           if [ ${#failed[@]} -gt 0 ]; then
             echo "Failed engines: ${failed[*]}"
             exit 1
@@ -87,12 +94,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: cachix/cachix-action@v15
         with:
-          name: nix-chess-suite
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          extra-conf: |
+            extra-substituters = https://pub-428250a0977d4667937b8ce7e16887ce.r2.dev
+            extra-trusted-public-keys = nix-chess-suite-1:5uNzouWBsIpF0iwdnTgQj2A8ZSdvFFLfV5kkiapqW9U=
 
       - name: Cross-build engines to Windows
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          NIX_SIGNING_KEY: ${{ secrets.NIX_SIGNING_KEY }}
         run: |
           set -uo pipefail
           # win-* packages exist only on x86_64-linux (the cross host).
@@ -101,18 +112,19 @@ jobs:
                (n: builtins.substring 0 4 n == "win-")
                (builtins.attrNames (builtins.getFlake (toString ./.)).packages.x86_64-linux))')
           mkdir -p dist
-          ok=0; fail=0; failed=""
+          built=(); ok=0; fail=0; failed=""
           for e in $engines; do
             echo "::group::$e"
-            if nix build ".#$e" --no-link --print-out-paths --print-build-logs > /tmp/out 2>&1; then
-              cp "$(tail -1 /tmp/out)"/bin/*.exe dist/ 2>/dev/null || true
-              ok=$((ok+1)); echo "ok: $e"
+            if out=$(nix build ".#$e" --no-link --print-out-paths --print-build-logs); then
+              cp "$out"/bin/*.exe dist/ 2>/dev/null || true
+              built+=("$out"); ok=$((ok+1)); echo "ok: $e"
             else
-              tail -20 /tmp/out; echo "::error title=cross-build failed::$e"
+              echo "::error title=cross-build failed::$e"
               fail=$((fail+1)); failed="$failed ${e#win-}"
             fi
             echo "::endgroup::"
           done
+          ./ci/r2-push.sh "${built[@]}" || echo "::warning::R2 push failed (non-fatal)"
           echo "=== Windows cross summary: $ok built, $fail failed ==="
           [ -n "$failed" ] && echo "Failed:$failed"
           # Non-blocking job, so do not exit nonzero on per-engine failures;

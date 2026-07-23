@@ -33,10 +33,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: cachix/cachix-action@v15
         with:
-          name: nix-chess-suite
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          extra-conf: |
+            extra-substituters = https://pub-428250a0977d4667937b8ce7e16887ce.r2.dev
+            extra-trusted-public-keys = nix-chess-suite-1:5uNzouWBsIpF0iwdnTgQj2A8ZSdvFFLfV5kkiapqW9U=
 
       - name: Update nixpkgs input
         run: nix flake update

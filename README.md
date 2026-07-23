@@ -52,12 +52,18 @@ List what's available for your system:
 nix flake show github:obazin/nix-chess-suite
 ```
 
-**You don't compile anything.** The flake advertises its binary cache
-(`nix-chess-suite.cachix.org`) via `nixConfig`, so the commands above download
-the prebuilt, CI-pushed binaries. Nix will ask once to trust the cache (answer
-`y`); if you'd rather pre-trust it, `cachix use nix-chess-suite` or add the
-substituter to your `nix.conf`. Without the cache, Nix would build all ~79
-engines from source locally — correct, but slow.
+**You don't compile anything.** The flake advertises its binary cache (a
+Cloudflare R2 bucket at `pub-…​.r2.dev`) via `nixConfig`, so the commands above
+download the prebuilt, CI-pushed binaries. Nix asks once to trust the cache
+(answer `y`); to pre-trust it, add to your `nix.conf`:
+
+```
+extra-substituters = https://pub-428250a0977d4667937b8ce7e16887ce.r2.dev
+extra-trusted-public-keys = nix-chess-suite-1:5uNzouWBsIpF0iwdnTgQj2A8ZSdvFFLfV5kkiapqW9U=
+```
+
+Without the cache, Nix would build all ~79 engines from source locally —
+correct, but slow.
 
 ### In your own flake / NixOS / home-manager
 
