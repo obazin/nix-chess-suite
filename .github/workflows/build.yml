@@ -114,8 +114,8 @@ jobs:
           # pulling a (wrong-CPU) cached path. No r2_push: never cache them.
           variants=$(nix eval --raw --impure --expr \
             'builtins.concatStringsSep "\n" (builtins.filter
-               (n: let s = builtins.substring ((builtins.stringLength n) - 7) 7 n;
-                   in s == "-native")
+               (n: let L = builtins.stringLength n;
+                   in L >= 7 && builtins.substring (L - 7) 7 n == "-native")
                (builtins.attrNames (builtins.getFlake (toString ./.)).packages.x86_64-linux))')
           ok=0; fail=0; failed=""
           for e in $variants; do
