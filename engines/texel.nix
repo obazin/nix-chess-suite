@@ -1,6 +1,6 @@
 # `mkEngine` is accepted and ignored: engines/default.nix and test-engine.nix
 # pass it to every engine file unconditionally.
-{ lib, stdenv, buildPackages, cmake, fetchFromGitHub, mkEngine ? null }:
+{ lib, stdenv, buildPackages, cmake, windows, fetchFromGitHub, mkEngine ? null }:
 
 # Texel, Peter Österlund's engine — grew out of his earlier CuckooChess and is
 # a distinct C++ lineage (not a Stockfish/Fruit fork). It is a CMake project,
@@ -26,6 +26,9 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [ cmake ];
+  # winpthreads supplies nanosleep, which libstdc++'s std::this_thread::sleep_for
+  # needs on mingw-UCRT (mcfgthreads doesn't provide it).
+  buildInputs = lib.optional stdenv.hostPlatform.isWindows windows.pthreads;
 
   # texel's sysport.h has a MINGW branch (Windows threads); without -DMINGW it
   # falls through __GNUC__ to the POSIX path and fails on <pthread.h>.

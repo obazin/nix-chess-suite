@@ -66,6 +66,17 @@ mkEngine rec {
     substituteInPlace globals.cpp \
       --replace-quiet '#elif !defined(_MSC_VER)' '#elif !defined(_MSC_VER) && !defined(_WIN32)'
 
+    # types.h puts the Windows aligned-alloc (_aligned_malloc from <malloc.h>)
+    # under `#ifdef _MSC_VER`, so mingw falls through to std::aligned_alloc,
+    # which mingw's libstdc++ (UCRT, no C11 aligned_alloc) lacks. mingw HAS
+    # _aligned_malloc, so let it into that block too.
+    substituteInPlace types.h \
+      --replace-quiet '#ifdef _MSC_VER
+extern "C" {
+   #include <malloc.h>' '#if defined(_MSC_VER) || defined(__MINGW32__)
+extern "C" {
+   #include <malloc.h>'
+
     # The Makefile compiles AND links C++ through $(CC) (CPP := $(CC), LD :=
     # $(CC)). mkEngine sets CC to the C driver and CXX to the C++ driver, so
     # route both through $(CXX); otherwise the C driver links without the C++
