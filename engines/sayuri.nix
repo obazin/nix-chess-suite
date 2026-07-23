@@ -97,7 +97,8 @@ stdenv.mkDerivation rec {
     # https://github.com/MetalPhaeton/sayuri/blob/master/LICENSE
     license = licenses.mit;
     mainProgram = "sayuri";
-    platforms = platforms.unix ++ platforms.windows;
+    # Gated off Windows: CMake project doesn't configure for the mingw cross.
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

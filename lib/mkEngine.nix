@@ -73,12 +73,13 @@ stdenv.mkDerivation (passthruArgs // {
   buildInputs = buildInputs
     ++ lib.optional stdenv.hostPlatform.isWindows windows.pthreads;
 
-  # Force-link the two libraries that mingw builds routinely need but engine
-  # Makefiles don't name (they assume Linux, where pthread is in libc and
-  # sockets need no extra lib): winpthreads (-lpthread) for engines that call
-  # pthread_* without linking it, and Winsock (-lws2_32) for any that use
-  # sockets. Both are harmless when unused; only added for the Windows cross.
-  NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-lpthread -lws2_32";
+  # Force-link the libraries that mingw builds routinely need but engine
+  # Makefiles don't name (they assume Linux): winpthreads (-lpthread) for
+  # pthread_* callers, Winsock (-lws2_32) for socket users, and winmm
+  # (-lwinmm) for the multimedia timer (timeGetTime/timeBeginPeriod). All
+  # harmless when unused; only added for the Windows cross.
+  NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows
+    "-lpthread -lws2_32 -lwinmm";
 } // lib.optionalAttrs (sourceRoot != null) {
   inherit sourceRoot;
 } // {
@@ -114,6 +115,13 @@ stdenv.mkDerivation (passthruArgs // {
     # lowercase <windows.h>, and the Nix store is case-sensitive, so normalise.
     grep -rlZ '<Windows.h>' --include='*.c' --include='*.cpp' --include='*.h' . 2>/dev/null \
       | xargs -0 -r sed -i 's/<Windows.h>/<windows.h>/g' || true
+
+    # Several engines have working Windows code paths that emit benign warnings
+    # under mingw's stricter defaults (e.g. printf %d for a DWORD in a
+    # POSIX/Windows shim). Where a Makefile builds with -Werror this fails the
+    # build; drop warnings-as-errors and the noisy format check for the cross.
+    # Append (don't replace) so an engine's own NIX_*FLAGS survive.
+    export NIX_CFLAGS_COMPILE="''${NIX_CFLAGS_COMPILE:-} -Wno-error -Wno-format"
   '' + ''
     # Respect the Nix toolchain rather than a hardcoded gcc. targetPrefix is
     # what makes the mingw cross-build work.

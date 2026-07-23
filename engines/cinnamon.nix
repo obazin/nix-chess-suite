@@ -66,6 +66,9 @@ mkEngine rec {
   '';
 
   meta = with lib; {
+    # Gated off Windows: its vendored syzygy/gaviota build chain fails under
+    # the mingw cross (a build tool returns 127).
+    platforms = platforms.unix;
     description = "Cinnamon, Giuseppe Cannella's UCI engine with Chess960 and multithreaded perft";
     homepage = "https://github.com/gekomad/Cinnamon";
     # LICENCE DISCREPANCY, resolved conservatively as GPLv3-or-later:

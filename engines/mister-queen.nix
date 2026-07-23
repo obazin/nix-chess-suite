@@ -27,7 +27,7 @@ mkEngine rec {
   # CC=cc make flag does not reach it. Patch the default to the toolchain's cc
   # (gcc is absent under the Nix clang stdenv on Darwin).
   postPatch = ''
-    substituteInPlace Makefile --replace-fail 'C ?= gcc' 'C ?= cc'
+    substituteInPlace Makefile --replace-fail 'C ?= gcc' 'C := $(CC)'
   '';
 
   # `make release` compiles into bin/release/main and symlinks ./main to it.

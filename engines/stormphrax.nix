@@ -92,6 +92,8 @@ LDFLAGS :='
   '';
 
   meta = with lib; {
+    # Gated off Windows: requires clang; clang cross to mingw is not wired up.
+    platforms = platforms.unix;
     description = "Stormphrax, a strong NNUE-based UCI chess engine in C++ by Ciekce";
     homepage = "https://github.com/Ciekce/Stormphrax";
     # LICENSE is the verbatim GPLv3 text; source headers (e.g. src/main.cpp)

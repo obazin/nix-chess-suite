@@ -125,7 +125,8 @@ stdenv.mkDerivation rec {
     license = licenses.gpl3Plus;
     mainProgram = "igel";
     # x86_64-only: the NNUE code has no ARM SIMD path. See the header comment.
-    platforms = [ "x86_64-linux" "x86_64-windows" ];
+    # Windows dropped: mingw gcc fails to inline its AVX2 intrinsics.
+    platforms = [ "x86_64-linux" ];
     maintainers = [ ];
   };
 }

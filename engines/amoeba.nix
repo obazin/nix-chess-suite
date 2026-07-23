@@ -97,7 +97,8 @@ stdenv.mkDerivation rec {
     # https://github.com/abulmo/amoeba/blob/master/LICENSE
     license = licenses.gpl3Only;
     mainProgram = "amoeba";
-    platforms = platforms.unix ++ platforms.windows;
+    # Gated off Windows: D (ldc) cross to mingw is not wired up (as with dumb).
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

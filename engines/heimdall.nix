@@ -223,7 +223,9 @@ stdenv.mkDerivation rec {
     # https://github.com/nocturn9x/heimdall/blob/master/LICENSE
     license = licenses.asl20;
     mainProgram = "heimdall";
-    platforms = platforms.unix ++ platforms.windows;
+    # Gated off Windows: Nim's C backend cross to mingw needs a cross clang
+    # this toolchain doesn't provide.
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

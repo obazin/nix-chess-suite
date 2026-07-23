@@ -55,6 +55,8 @@ mkEngine rec {
   binaries = [ "xbjazz" ];
 
   meta = with lib; {
+    # Gated off Windows: CMake project does not configure for the mingw cross.
+    platforms = platforms.unix;
     description = "Jazz 8.40, Evert Glebbeek's UCI chess engine";
     homepage = "http://www.eglebbk.dds.nl/program/chess-index.html";
     # COPYING is GPLv3; README says "Jazz is distributed under the GPL" and the
