@@ -119,12 +119,12 @@ and macOS: every engine, reproducibly, with nothing dumped into the system.
 | `aarch64-darwin` | Nix flake | ✅ fully verified — every engine builds and passes UCI |
 | `x86_64-linux` | Nix flake | ✅ fully verified |
 | `aarch64-linux` | Nix flake | ✅ fully verified |
-| `x86_64-windows` | GitHub Actions, MSYS2/mingw | 🚧 in progress — not Nix-managed |
+| `x86_64-windows` | Nix flake, cross-compiled (`pkgsCross` → mingw) | 🚧 in progress — ~33 of the engines that declare Windows |
 | `x86_64-darwin` | — | **not supported** (nixpkgs dropped it) |
 
 All three Nix-managed platforms build every applicable engine in CI and pass the in-sandbox UCI check. Coverage is honest rather than aspirational: an engine that genuinely can't build on a platform has its `meta.platforms` narrowed to exclude it — the x86-only engines (Obsidian, Igel) are excluded on aarch64, and Gull (fixed-address linking no toolchain here accepts) is declared for Windows only. Windows native builds are still being brought up and are non-blocking.
 
-Two deliberate decisions here. Windows is built on native runners rather than `pkgsCross.mingw-ucrt-x86_64` because a meaningful fraction of these hand-rolled Makefiles do not survive cross-compilation, and debugging 40 of them individually is not a good use of anyone's time. Intel Mac is unsupported because nixpkgs [removed `x86_64-darwin` from `lib.systems.doubles`](https://github.com/NixOS/nixpkgs/commit/fdb82060) in July 2026; supporting it would mean pinning a stale nixpkgs for every engine.
+Two deliberate decisions here. **Windows** is produced by cross-compiling the same engine derivations to mingw (UCRT) with `pkgsCross`, from the `x86_64-linux` runner — reusing every patch, net pin and flag rather than reimplementing them in a native MSYS2 build script. Not every engine survives the cross (some assume POSIX APIs, some are Go+cgo / Zig / D that don't cross cleanly); those have Windows dropped from their `meta.platforms` and are honestly excluded. **Intel Mac** is unsupported because nixpkgs [removed `x86_64-darwin` from `lib.systems.doubles`](https://github.com/NixOS/nixpkgs/commit/fdb82060) in July 2026; supporting it would mean pinning a stale nixpkgs for every engine.
 
 ## Engine tiers
 
