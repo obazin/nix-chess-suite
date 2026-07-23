@@ -32,6 +32,10 @@ buildGoModule rec {
 
   vendorHash = null;
 
+  # Pure Go; disable cgo for the Windows cross (buildGoModule defaults it on and
+  # then fails without a wired mingw C toolchain).
+  env.CGO_ENABLED = if stdenv.hostPlatform.isWindows then "0" else "1";
+
   subPackages = [ "zurichess" ];
 
   postPatch = ''

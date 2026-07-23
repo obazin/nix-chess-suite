@@ -110,7 +110,11 @@ buildGoModule rec {
     # https://github.com/mhib/combusken/blob/master/LICENSE
     license = with licenses; [ gpl3Only mit ];
     mainProgram = "combusken";
-    platforms = platforms.unix ++ platforms.windows;
+    # Unix only: Combusken links Jon Dart's Fathom via cgo (CGO_ENABLED=1),
+    # and cross-compiling Go+cgo to Windows needs a wired mingw C toolchain
+    # that buildGoModule does not set up. Buildable on Windows only if the
+    # cgo Fathom path is replaced; gated off until then.
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

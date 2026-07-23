@@ -26,6 +26,10 @@ buildGoModule rec {
   # buildGoModule fetches deterministically against this hash.
   vendorHash = "sha256-EprLs5uJUOc57zkV1PBLvli/Y5Khhc4PTOpjTqSqyLs=";
 
+  # Pure Go; disable cgo for the Windows cross (buildGoModule defaults it on and
+  # then fails without a wired mingw C toolchain).
+  env.CGO_ENABLED = if stdenv.hostPlatform.isWindows then "0" else "1";
+
   # The main package is blunder/main.go; building it alone skips the tuner/
   # training helpers, which pull in extra deps and are not part of the engine.
   subPackages = [ "blunder" ];

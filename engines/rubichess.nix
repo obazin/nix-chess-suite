@@ -126,7 +126,11 @@ stdenv.mkDerivation rec {
     # "either version 3 of the License, or (at your option) any later version".
     license = licenses.gpl3Plus;
     mainProgram = "rubichess";
-    platforms = platforms.unix ++ platforms.windows;
+    # Unix only for now: the Makefile links nixpkgs' zlib.static (libz.a),
+    # which the mingw zlib does not provide (`attribute 'static' missing`), and
+    # its net embedding uses GNU-ld `ld -r -b binary`. Gated off Windows until
+    # both are handled.
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

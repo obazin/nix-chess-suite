@@ -27,6 +27,11 @@ buildGoModule rec {
   # is no module cache to fix up.
   vendorHash = null;
 
+  # Cross-compiling Go to Windows defaults CGO on and then fails ("cannot find
+  # runtime/cgo") without a wired mingw C toolchain. Counter is pure Go, so
+  # just disable cgo for the Windows cross.
+  env.CGO_ENABLED = if stdenv.hostPlatform.isWindows then "0" else "1";
+
   # cmd/counter is the only main package; building it alone skips the various
   # training and tuning helpers under pkg/.
   subPackages = [ "cmd/counter" ];

@@ -101,7 +101,7 @@ stdenv.mkDerivation (passthruArgs // {
       [ -f "$mk" ] || continue
       # librt (clock/timers) and libdl (dlopen) are folded into the Windows CRT
       # / not applicable; the tokens just make the mingw linker fail.
-      sed -i -E 's/ -l(rt|dl)\b//g' "$mk"
+      sed -i -E 's/-l(rt|dl)\b//g' "$mk"
     done
   '' + ''
     # Respect the Nix toolchain rather than a hardcoded gcc. targetPrefix is
@@ -118,12 +118,16 @@ stdenv.mkDerivation (passthruArgs // {
     ]
     ++ lib.optional (evalFile != null) "EVALFILE=${evalFileName}";
 
-  # Almost none of these engines ship an install target.
+  # Almost none of these engines ship an install target. On a mingw cross the
+  # compiler appends .exe to the output name, so look for the built file with
+  # the platform's executable extension (empty on unix, ".exe" on Windows).
   installPhase = args.installPhase or ''
     runHook preInstall
     mkdir -p "$out/bin"
     ${lib.concatMapStringsSep "\n" (b: ''
-      install -Dm755 "${b}" "$out/bin/$(basename "${b}")${stdenv.hostPlatform.extensions.executable}"
+      src="${b}${stdenv.hostPlatform.extensions.executable}"
+      [ -e "$src" ] || src="${b}"
+      install -Dm755 "$src" "$out/bin/$(basename "${b}")${stdenv.hostPlatform.extensions.executable}"
     '') binaries}
     ${lib.optionalString (binaries != [ ] && builtins.head binaries != pname) ''
       ln -sf "$out/bin/$(basename "${builtins.head binaries}")${stdenv.hostPlatform.extensions.executable}" \
