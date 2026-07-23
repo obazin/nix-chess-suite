@@ -34,8 +34,6 @@ mkEngine rec {
   dataFiles = [ "../book_small.bin" ];
 
   meta = with lib; {
-    # Gated off Windows: shared Fruit posix.cpp reads glibc FILE internals absent in mingw.
-    platforms = platforms.unix;
     description = "Gambit Fruit, Ryan Benitez's aggressive Fruit 2.1 derivative with Toga II improvements";
     homepage = "https://www.chessprogramming.org/Gambit_Fruit";
     # readme.txt reproduces Fruit 2.1's own notice verbatim: "either version 2

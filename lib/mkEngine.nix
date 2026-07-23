@@ -116,6 +116,13 @@ stdenv.mkDerivation (passthruArgs // {
     grep -rlZ '<Windows.h>' --include='*.c' --include='*.cpp' --include='*.h' . 2>/dev/null \
       | xargs -0 -r sed -i 's/<Windows.h>/<windows.h>/g' || true
 
+    # The Fruit lineage's Windows input-poll fast path peeks at stdin->_cnt, a
+    # field the old MSVCRT FILE had but the mingw-UCRT FILE does not. The
+    # PeekNamedPipe path right below it does the real detection, so neutralise
+    # the peek (`if (0 > 0)`). Harmless where the idiom is absent.
+    grep -rlZ 'stdin->_cnt' --include='*.c' --include='*.cpp' . 2>/dev/null \
+      | xargs -0 -r sed -i 's/stdin->_cnt/0/g' || true
+
     # Several engines have working Windows code paths whose Makefiles build with
     # -Werror and then trip a benign mingw warning (e.g. printf %d for a DWORD
     # in a POSIX/Windows shim). Turn warnings-as-errors off for the cross so

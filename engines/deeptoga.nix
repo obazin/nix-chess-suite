@@ -55,8 +55,6 @@ mkEngine rec {
   '';
 
   meta = with lib; {
-    # Gated off Windows: shared Fruit posix.cpp reads glibc FILE internals absent in mingw.
-    platforms = platforms.unix;
     description = "DeepToga 1.9.6 NPS, a multi-threaded Toga II derivative with node-rate throttling";
     homepage = "https://www.chessprogramming.org/Toga";
     # The distribution ships COPYING (GPLv2 text) and LICENSE, the latter
