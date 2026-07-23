@@ -46,6 +46,10 @@ stdenv.mkDerivation rec {
      else "-DTARGET_ARCH=x64-bmi2")
   ];
 
+  # mingw gcc flags a benign off-by-one array-bounds access (index 64 into
+  # Bitboard[64]) that -Werror rejects; relax it, only for the Windows cross.
+  env.NIX_CFLAGS_COMPILE = lib.optionalString stdenv.hostPlatform.isWindows "-Wno-error";
+
   # Build only the engine (and its backend dependency), not the utils/trainer
   # helper binaries — they are training tooling we do not ship and only add
   # failure surface.

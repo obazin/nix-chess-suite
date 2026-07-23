@@ -1,4 +1,4 @@
-{ lib, mkEngine, fetchFromGitHub, cmake }:
+{ lib, stdenv, mkEngine, fetchFromGitHub, cmake }:
 
 mkEngine rec {
   pname = "pulse";
@@ -58,7 +58,7 @@ mkEngine rec {
   # (which expects binaries relative to the source root) does not apply.
   installPhase = ''
     runHook preInstall
-    install -Dm755 src/main/cpp/pulse "$out/bin/pulse"
+    install -Dm755 src/main/cpp/pulse${stdenv.hostPlatform.extensions.executable} "$out/bin/pulse${stdenv.hostPlatform.extensions.executable}"
     runHook postInstall
   '';
 

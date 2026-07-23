@@ -56,6 +56,8 @@ mkEngine rec {
   binaries = [ "sjaakii" ];
 
   meta = with lib; {
+    # Gated off Windows: CMake project does not configure for the mingw cross.
+    platforms = platforms.unix;
     description = "Sjaak II 1.4.1, Evert Glebbeek's variant-capable UCI/XBoard engine";
     homepage = "http://www.eglebbk.dds.nl/program/chess-index.html";
     # COPYING is GPLv3; author's site states GPL-3.0 with no "or later" wording.

@@ -116,12 +116,14 @@ stdenv.mkDerivation (passthruArgs // {
     grep -rlZ '<Windows.h>' --include='*.c' --include='*.cpp' --include='*.h' . 2>/dev/null \
       | xargs -0 -r sed -i 's/<Windows.h>/<windows.h>/g' || true
 
-    # Several engines have working Windows code paths that emit benign warnings
-    # under mingw's stricter defaults (e.g. printf %d for a DWORD in a
-    # POSIX/Windows shim). Where a Makefile builds with -Werror this fails the
-    # build; drop warnings-as-errors and the noisy format check for the cross.
+    # Several engines have working Windows code paths whose Makefiles build with
+    # -Werror and then trip a benign mingw warning (e.g. printf %d for a DWORD
+    # in a POSIX/Windows shim). Turn warnings-as-errors off for the cross so
+    # those build. NB: do NOT add -Wno-format here — it disables -Wformat, which
+    # makes the stdenv's -Werror=format-security hardening fail with
+    # "-Wformat-security ignored without -Wformat" and breaks every build.
     # Append (don't replace) so an engine's own NIX_*FLAGS survive.
-    export NIX_CFLAGS_COMPILE="''${NIX_CFLAGS_COMPILE:-} -Wno-error -Wno-format"
+    export NIX_CFLAGS_COMPILE="''${NIX_CFLAGS_COMPILE:-} -Wno-error"
   '' + ''
     # Respect the Nix toolchain rather than a hardcoded gcc. targetPrefix is
     # what makes the mingw cross-build work.

@@ -1,6 +1,6 @@
 # `mkEngine` is accepted and ignored: engines/default.nix and test-engine.nix
 # pass it to every engine file unconditionally.
-{ lib, stdenv, buildPackages, cmake, fetchFromGitHub, mkEngine ? null }:
+{ lib, stdenv, buildPackages, cmake, fetchFromGitHub, windows, mkEngine ? null }:
 
 # Vajolet2, Marco Belli's from-scratch C++ engine (a distinct lineage, not a
 # Stockfish/Fruit fork). CMake project, so it is built with a plain
@@ -65,9 +65,12 @@ stdenv.mkDerivation rec {
   # ${CMAKE_BINARY_DIR}/src/Vajolet.
   installPhase = ''
     runHook preInstall
-    install -Dm755 src/Vajolet "$out/bin/vajolet2${stdenv.hostPlatform.extensions.executable}"
+    install -Dm755 src/Vajolet${stdenv.hostPlatform.extensions.executable} "$out/bin/vajolet2${stdenv.hostPlatform.extensions.executable}"
     runHook postInstall
   '';
+
+  buildInputs = lib.optional stdenv.hostPlatform.isWindows windows.pthreads;
+  NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-lpthread";
 
   doInstallCheck = stdenv.hostPlatform.emulatorAvailable buildPackages;
 

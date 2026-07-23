@@ -4,7 +4,7 @@
 # meta fields and the UCI smoke test below mirror lib/mkEngine.nix.
 #
 # `mkEngine` is accepted and ignored so callPackage can pass it uniformly.
-{ lib, stdenv, buildPackages, fetchFromGitHub, fetchurl, mkEngine ? null }:
+{ lib, stdenv, buildPackages, fetchFromGitHub, fetchurl, windows, mkEngine ? null }:
 
 let
   # Raw NNUE net. network.txt in the pinned tree names net "0178r"; the Makefile
@@ -15,6 +15,7 @@ let
     hash = "sha256-Zj4FMaxxxsfG07xPH6ySO/aRNvl4b6HaXErCU4Ku5Us=";
   };
 in
+# On the Windows cross, POSIX threads come from winpthreads.
 stdenv.mkDerivation rec {
   pname = "plentychess";
   version = "8.0.0";
@@ -61,6 +62,9 @@ stdenv.mkDerivation rec {
       "$out/bin/${pname}${stdenv.hostPlatform.extensions.executable}"
     runHook postInstall
   '';
+
+  buildInputs = lib.optional stdenv.hostPlatform.isWindows windows.pthreads;
+  NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-lpthread";
 
   doInstallCheck = stdenv.hostPlatform.emulatorAvailable buildPackages;
 

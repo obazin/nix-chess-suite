@@ -63,7 +63,7 @@ mkEngine rec {
   # same path and `ln` errors, so install straight to the pname instead.
   installPhase = ''
     runHook preInstall
-    install -Dm755 Winter "$out/bin/winter${stdenv.hostPlatform.extensions.executable}"
+    install -Dm755 Winter${stdenv.hostPlatform.extensions.executable} "$out/bin/winter${stdenv.hostPlatform.extensions.executable}"
     runHook postInstall
   '';
 
