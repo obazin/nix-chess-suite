@@ -60,6 +60,12 @@ mkEngine rec {
   ];
 
   postPatch = ''
+    # Arasan's POSIX includes are guarded only by !defined(_MSC_VER); mingw is
+    # Windows but not MSVC, so it wrongly pulls in <sys/resource.h> et al. Also
+    # exclude _WIN32 so mingw takes the _WIN32 branch below.
+    substituteInPlace globals.cpp \
+      --replace-quiet '#elif !defined(_MSC_VER)' '#elif !defined(_MSC_VER) && !defined(_WIN32)'
+
     # The Makefile compiles AND links C++ through $(CC) (CPP := $(CC), LD :=
     # $(CC)). mkEngine sets CC to the C driver and CXX to the C++ driver, so
     # route both through $(CXX); otherwise the C driver links without the C++
@@ -122,8 +128,6 @@ mkEngine rec {
   '';
 
   meta = with lib; {
-    # Gated off Windows: POSIX-only (sockets/FD_SET, sysconf, sys/resource.h).
-    platforms = platforms.unix;
     description = "Arasan, Jon Dart's NNUE UCI chess engine, built with the ARM NEON target";
     homepage = "https://www.arasanchess.org/";
     # LICENSE is a verbatim MIT-style permissive grant: "Copyright 1994-2026 by

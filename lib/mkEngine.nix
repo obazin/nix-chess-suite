@@ -120,7 +120,7 @@ stdenv.mkDerivation (passthruArgs // {
     # field the old MSVCRT FILE had but the mingw-UCRT FILE does not. The
     # PeekNamedPipe path right below it does the real detection, so neutralise
     # the peek (`if (0 > 0)`). Harmless where the idiom is absent.
-    grep -rlZ 'stdin->_cnt' --include='*.c' --include='*.cpp' . 2>/dev/null \
+    grep -rlZ 'stdin->_cnt' --include='*.c' --include='*.cc' --include='*.cpp' --include='*.cxx' . 2>/dev/null \
       | xargs -0 -r sed -i 's/stdin->_cnt/0/g' || true
 
     # Several engines have working Windows code paths whose Makefiles build with

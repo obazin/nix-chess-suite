@@ -50,6 +50,11 @@ mkEngine rec {
     # stripping on Darwin and gains us nothing (fixupPhase strips anyway).
     substituteInPlace Makefile --replace-fail '$(STRIP) $(EXE)' 'true'
 
+    # The build recipe also runs a plain `ar rcs libCinnamon.a ...` to make an
+    # unused static lib; plain `ar` isn't on PATH for the mingw cross (127).
+    # Neutralise it — the engine binary is produced independently.
+    sed -i 's|ar rcs libCinnamon.a.*|true|' Makefile
+
     # The Makefile links with a bare `-lpthread`, which the GNU linker in the
     # Linux sandbox cannot resolve (glibc folds pthread into libc). `-pthread`
     # lets the compiler driver handle threading correctly on both platforms.
@@ -66,9 +71,6 @@ mkEngine rec {
   '';
 
   meta = with lib; {
-    # Gated off Windows: its vendored syzygy/gaviota build chain fails under
-    # the mingw cross (a build tool returns 127).
-    platforms = platforms.unix;
     description = "Cinnamon, Giuseppe Cannella's UCI engine with Chess960 and multithreaded perft";
     homepage = "https://github.com/gekomad/Cinnamon";
     # LICENCE DISCREPANCY, resolved conservatively as GPLv3-or-later:

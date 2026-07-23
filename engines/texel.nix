@@ -27,6 +27,10 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [ cmake ];
 
+  # texel's sysport.h has a MINGW branch (Windows threads); without -DMINGW it
+  # falls through __GNUC__ to the POSIX path and fails on <pthread.h>.
+  env.NIX_CFLAGS_COMPILE = lib.optionalString stdenv.hostPlatform.isWindows "-DMINGW";
+
   # The CPU-feature options all default OFF (a portable scalar build). On
   # aarch64 turn on the flags that carry no -march requirement: USE_NEON only
   # adds -DUSE_NEON (armv8-a always has NEON; USE_NEON_DOT, which *would* force
@@ -76,6 +80,7 @@ stdenv.mkDerivation rec {
   enableParallelBuilding = true;
 
   meta = with lib; {
+    platforms = platforms.unix ++ platforms.windows;
     description = "Texel, Peter Österlund's UCI engine (grown from CuckooChess) with a committed, embedded net, built via CMake";
     homepage = "https://github.com/peterosterlund2/texel";
     # COPYING is the verbatim GPLv3 text; source files (e.g. app/texel/texel.cpp)
@@ -83,9 +88,6 @@ stdenv.mkDerivation rec {
     # notice, so GPL-3.0-or-later.
     license = licenses.gpl3Plus;
     mainProgram = "texel";
-    # Gated off Windows: relies on POSIX APIs (sockets/FD_SET, sysconf,
-    # sys/resource.h) with no Windows path. Builds on unix.
-    platforms = platforms.unix;
     maintainers = [ ];
   };
 }
