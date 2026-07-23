@@ -59,26 +59,26 @@ jobs:
           NIX_SIGNING_KEY: ${{ secrets.NIX_SIGNING_KEY }}
         run: |
           set -uo pipefail
+          source ./ci/r2-cache.sh   # defines r2_push(); no-op without secrets
           # Iterate the `checks` output: it is already filtered to engines
           # whose meta.platforms includes this system, so platform-gated
           # engines (e.g. the x86-only ones on aarch64) are not attempted here.
           engines=$(nix eval --raw --impure --expr \
             'builtins.concatStringsSep "\n" (builtins.attrNames (builtins.getFlake (toString ./.)).checks.${builtins.currentSystem})')
-          built=()
           failed=()
           for e in $engines; do
             echo "::group::$e"
             if nix build ".#$e" --no-link --print-build-logs; then
               echo "ok: $e"
-              while IFS= read -r p; do [ -n "$p" ] && built+=("$p"); done \
-                < <(nix build ".#$e" --no-link --print-out-paths)
+              # Push this engine's closure to R2 immediately: fills the cache
+              # progressively and validates auth on the first engine.
+              r2_push $(nix build ".#$e" --no-link --print-out-paths)
             else
               echo "::error title=build failed::$e"
               failed+=("$e")
             fi
             echo "::endgroup::"
           done
-          ./ci/r2-push.sh "${built[@]}" || echo "::warning::R2 push failed (non-fatal)"
           if [ ${#failed[@]} -gt 0 ]; then
             echo "Failed engines: ${failed[*]}"
             exit 1
@@ -106,25 +106,26 @@ jobs:
           NIX_SIGNING_KEY: ${{ secrets.NIX_SIGNING_KEY }}
         run: |
           set -uo pipefail
+          source ./ci/r2-cache.sh
           # win-* packages exist only on x86_64-linux (the cross host).
           engines=$(nix eval --raw --impure --expr \
             'builtins.concatStringsSep "\n" (builtins.filter
                (n: builtins.substring 0 4 n == "win-")
                (builtins.attrNames (builtins.getFlake (toString ./.)).packages.x86_64-linux))')
           mkdir -p dist
-          built=(); ok=0; fail=0; failed=""
+          ok=0; fail=0; failed=""
           for e in $engines; do
             echo "::group::$e"
             if out=$(nix build ".#$e" --no-link --print-out-paths --print-build-logs); then
               cp "$out"/bin/*.exe dist/ 2>/dev/null || true
-              built+=("$out"); ok=$((ok+1)); echo "ok: $e"
+              r2_push "$out"
+              ok=$((ok+1)); echo "ok: $e"
             else
               echo "::error title=cross-build failed::$e"
               fail=$((fail+1)); failed="$failed ${e#win-}"
             fi
             echo "::endgroup::"
           done
-          ./ci/r2-push.sh "${built[@]}" || echo "::warning::R2 push failed (non-fatal)"
           echo "=== Windows cross summary: $ok built, $fail failed ==="
           [ -n "$failed" ] && echo "Failed:$failed"
           # Non-blocking job, so do not exit nonzero on per-engine failures;
