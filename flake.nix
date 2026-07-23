@@ -190,6 +190,30 @@
                 runHook postBuild
               '';
             };
+
+            # Obsidian: x86-only, so it only ever builds on x86-linux (GCC). Its
+            # PGO target is literally named `make` (swap the `nopgo` target for
+            # it). The recipe hardcodes g++/gcc with pure GCC PGO
+            # (-fprofile-generate="obs_pgo" -> bench -> -fprofile-use), so no
+            # llvm-profdata is needed; the net is pre-placed (download-net is a
+            # no-op) and embedded via incbin, so bench runs offline.
+            obsidian = old: {
+              makeFlags = map (f: if f == "nopgo" then "make" else f)
+                old.makeFlags;
+            };
+
+            # Seer: its `pgo` target does the full cycle with bare GCC
+            # -fprofile-generate/-fprofile-use (.gcda, no external tool). But on
+            # Clang the same makefile never runs `llvm-profdata merge`, so the
+            # profile-use pass has no .profdata and the build fails — and adding
+            # llvm doesn't help since nothing calls it. So enable PGO only on
+            # GCC (Linux); on Clang (Darwin) leave seer-native native-only (a
+            # no-op override). Net is embedded via INCBIN, so bench is offline.
+            seer = old:
+              if pkgs.stdenv.cc.isClang then { } else {
+                makeFlags = map (f: if f == "binary" then "pgo" else f)
+                  old.makeFlags;
+              };
           };
 
           nativePackages = lib.mapAttrs'

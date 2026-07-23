@@ -84,6 +84,54 @@ jobs:
             exit 1
           fi
 
+  native-smoke:
+    # Validate the opt-in native/PGO variants on real x86-64/GCC — the primary
+    # target for the ultra-strong tier, and the path that CANNOT be tested on
+    # the aarch64-darwin/Clang reference machine (GCC PGO differs from Clang,
+    # and some engines' PGO only works under GCC). These are CPU-specific and
+    # deliberately NOT cached: this job BUILDS them (allowSubstitutes=false, so
+    # they compile locally on the runner) but never calls r2_push, so no
+    # machine-specific binary is ever served to consumers. Gated to manual /
+    # weekly runs because each build is uncached and PGO recompiles twice, so
+    # it must not tax every push. Non-blocking.
+    name: native-smoke (x86_64, gcc)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            extra-substituters = https://pub-428250a0977d4667937b8ce7e16887ce.r2.dev
+            extra-trusted-public-keys = nix-chess-suite-1:5uNzouWBsIpF0iwdnTgQj2A8ZSdvFFLfV5kkiapqW9U=
+
+      - name: Build native/PGO variants (no push)
+        run: |
+          set -uo pipefail
+          # Every `<engine>-native` package on x86_64-linux. allowSubstitutes is
+          # false on these, so `nix build` compiles them here rather than
+          # pulling a (wrong-CPU) cached path. No r2_push: never cache them.
+          variants=$(nix eval --raw --impure --expr \
+            'builtins.concatStringsSep "\n" (builtins.filter
+               (n: let s = builtins.substring ((builtins.stringLength n) - 7) 7 n;
+                   in s == "-native")
+               (builtins.attrNames (builtins.getFlake (toString ./.)).packages.x86_64-linux))')
+          ok=0; fail=0; failed=""
+          for e in $variants; do
+            echo "::group::$e"
+            if nix build ".#$e" --no-link --print-build-logs; then
+              ok=$((ok+1)); echo "ok: $e"
+            else
+              echo "::error title=native build failed::$e"
+              fail=$((fail+1)); failed="$failed $e"
+            fi
+            echo "::endgroup::"
+          done
+          echo "=== native-smoke summary: $ok built, $fail failed ==="
+          [ -n "$failed" ] && echo "Failed:$failed"
+          true
+
   windows:
     # Windows .exe are cross-compiled to mingw (UCRT) from a Linux runner using
     # the same engine derivations, via pkgsCross. No Windows runner needed.
