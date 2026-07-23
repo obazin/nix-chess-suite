@@ -7,10 +7,11 @@ that currently cross-compile — refresh from the latest CI Windows job."""
 import json, subprocess, sys
 
 # Engines that currently cross-compile to Windows (from the CI windows job).
-WINDOWS = set("""akimbo berserk bit-genie blackmarlin carp clover ct800 deepov
-demolito fabchess glaurung laser loki minic napoleon obsidian reckless rodent-iv
-rustic senpai shallow-blue stash stockfish svart velvet vice viridithas wahoo
-weiss willow wukong wyldchess xiphos""".split())
+WINDOWS = set("""akimbo arasan berserk bit-genie blackmarlin caissa carp cheng4
+cinnamon clover ct800 deepov demolito discocheck fabchess fruit gambitfruit
+glaurung laser loki minic napoleon obsidian pulse reckless rodent-iv rustic
+senpai shallow-blue stash stockfish svart texel togaii tucano vajolet2 velvet
+vice viridithas wahoo weiss willow winter wukong wyldchess xiphos""".split())
 
 # (approx Elo, eval/algorithm, language). Elo is ballpark (CCRL/TCEC/class).
 DATA = {
