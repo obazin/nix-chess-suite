@@ -100,9 +100,39 @@
             alexandria = false; clover = false; seer = false; stormphrax = false;
             viridithas = true; reckless = true;
           };
+
+          # Profile-guided optimisation, layered on top of `-march=native` for
+          # engines whose upstream build ships a PGO target. PGO compiles the
+          # engine, runs it to record a profile, then recompiles guided by that
+          # profile — a further few percent on top of native codegen. It runs
+          # the just-built binary mid-build, which is only sound because native
+          # variants are already local-only (built on, and for, this CPU).
+          # Each entry is an overrideAttrs function applied after mkNative; only
+          # engines listed here get PGO, the rest stay native-only.
+          #
+          # Stockfish: swap its plain `build` make target for `profile-build`
+          # (its own PGO pipeline: instrumented build -> `bench` -> rebuild).
+          # With GCC (Linux) this needs no extra tools; with Clang (Darwin) the
+          # pipeline shells out to `llvm-profdata` to merge the raw profile, so
+          # put the matching llvm on PATH there.
+          pgoOverrides = {
+            stockfish = old: {
+              makeFlags = map (f: if f == "build" then "profile-build" else f)
+                old.makeFlags;
+              nativeBuildInputs = (old.nativeBuildInputs or [ ])
+                ++ lib.optional pkgs.stdenv.cc.isClang pkgs.llvmPackages.llvm;
+            };
+          };
+
           nativePackages = lib.mapAttrs'
-            (name: isRust: lib.nameValuePair "${name}-native"
-              (mkNative isRust engines.${name}))
+            (name: isRust:
+              let
+                native = mkNative isRust engines.${name};
+                pgo = if pgoOverrides ? ${name}
+                  then native.overrideAttrs pgoOverrides.${name}
+                  else native;
+              in
+              lib.nameValuePair "${name}-native" pgo)
             strongTier;
           # Only the native variants buildable on this system, for the bundle.
           nativeBuildable = lib.filterAttrs
