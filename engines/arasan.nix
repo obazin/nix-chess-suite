@@ -80,8 +80,15 @@ extern "C" {
     # The x86 build types add -fuse-ld=gold; the gold linker isn't in the mingw
     # cross toolchain, so collect2 fails with "cannot find 'ld'". Default bfd
     # links fine. (Windows only, to keep gold on Linux where it's present.)
+    #
+    # LIBS starts as `-lc -lm`. mingw has no standalone libc (the CRT — msvcrt/
+    # ucrt — is linked implicitly), so `-lc` makes ld fail with "cannot find
+    # -lc". libm exists as a stub, so keep it. Windows only; -lc is fine and
+    # implicit on Linux/Darwin.
     ${lib.optionalString stdenv.hostPlatform.isWindows ''
-      substituteInPlace Makefile --replace-quiet '-fuse-ld=gold' ""
+      substituteInPlace Makefile \
+        --replace-quiet '-fuse-ld=gold' "" \
+        --replace-fail 'LIBS := -lc -lm' 'LIBS := -lm'
     ''}
 
     # The Makefile compiles AND links C++ through $(CC) (CPP := $(CC), LD :=
