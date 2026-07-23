@@ -5,6 +5,18 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   };
 
+  # Advertise the project's binary cache so consumers download the prebuilt,
+  # CI-pushed engine binaries instead of compiling ~79 engines from source.
+  # Nix asks the user to trust these the first time they use the flake (or
+  # applies them automatically for a trusted user). Covers the three
+  # CI-built systems: aarch64-darwin, x86_64-linux, aarch64-linux.
+  nixConfig = {
+    extra-substituters = [ "https://nix-chess-suite.cachix.org" ];
+    extra-trusted-public-keys = [
+      "nix-chess-suite.cachix.org-1:TMsUd9aoIz7tpCCs/Tiu2aDIpRParToEj9QxZAECO4Y="
+    ];
+  };
+
   outputs = { self, nixpkgs }:
     let
       # x86_64-darwin was removed from nixpkgs in 2026-07; Intel Mac is not a

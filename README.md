@@ -52,6 +52,13 @@ List what's available for your system:
 nix flake show github:obazin/nix-chess-suite
 ```
 
+**You don't compile anything.** The flake advertises its binary cache
+(`nix-chess-suite.cachix.org`) via `nixConfig`, so the commands above download
+the prebuilt, CI-pushed binaries. Nix will ask once to trust the cache (answer
+`y`); if you'd rather pre-trust it, `cachix use nix-chess-suite` or add the
+substituter to your `nix.conf`. Without the cache, Nix would build all ~79
+engines from source locally — correct, but slow.
+
 ### In your own flake / NixOS / home-manager
 
 The flake ships `overlays.default`, which adds a `chessEngines` attrset:
