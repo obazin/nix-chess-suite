@@ -28,6 +28,8 @@ mkEngine rec {
   '';
 
   meta = with lib; {
+    # Gated off Windows: posix.cpp reads glibc FILE internals (_cnt) absent in mingw.
+    platforms = platforms.unix;
     description = "Fruit 2.1, Fabien Letouzey's influential UCI engine and the ancestor of Toga II";
     homepage = "https://www.chessprogramming.org/Fruit";
     # copying.txt in the release is GPLv2-or-later, NOT v3.

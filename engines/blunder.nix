@@ -60,9 +60,9 @@ buildGoModule rec {
                  printf 'isready\n';              sleep 0.6; \
                  printf 'ucinewgame\n';           sleep 0.6; \
                  printf 'position startpos\n';    sleep 0.6; \
-                 printf 'go movetime 3000\n';     sleep 18; \
+                 printf 'go movetime 3000\n';     sleep 30; \
                  printf 'quit\n';                 sleep 0.5; } \
-               | timeout -s KILL 30 $emu "$bin" 2>/dev/null | tr -d '\r' || true)
+               | timeout -s KILL 60 $emu "$bin" 2>/dev/null | tr -d '\r' || true)
 
     echo "$out_txt" | grep -q uciok || {
       echo "FAIL: blunder did not answer 'uciok'" >&2; echo "$out_txt" >&2; exit 1

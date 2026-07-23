@@ -33,6 +33,8 @@ mkEngine rec {
   '';
 
   meta = with lib; {
+    # Gated off Windows: shared Fruit posix.cpp reads glibc FILE internals absent in mingw.
+    platforms = platforms.unix;
     description = "Toga II, Thomas Gaksch's Fruit 2.1 derivative, modified for human-speed play";
     homepage = "https://www.chessprogramming.org/Toga";
     # This repo ships no LICENSE file. The grant is inherited: Toga II is a

@@ -56,6 +56,11 @@ stdenv.mkDerivation rec {
   makeFlags = [ "caissa" ];
 
   postPatch = ''
+    # MSVC-style <Windows.h> -> mingw's lowercase <windows.h> (case-sensitive
+    # store). mkEngine does this for its engines; Caissa is standalone CMake.
+    grep -rlZ '<Windows.h>' --include='*.cpp' --include='*.h' . 2>/dev/null \
+      | xargs -0 -r sed -i 's/<Windows.h>/<windows.h>/g' || true
+
     # Drop the pinned net where CMake's `file(COPY data/neuralNets/eval-71.pnn
     # ...)` expects it. Nothing else fetches it in the CMake path.
     mkdir -p data/neuralNets

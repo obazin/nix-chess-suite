@@ -101,7 +101,9 @@ stdenv.mkDerivation rec {
     # LICENSE in the repository root is the verbatim GNU GPL-3.0 text.
     license = licenses.gpl3Only;
     mainProgram = "plentychess";
-    platforms = platforms.unix ++ platforms.windows;
+    # Gated off Windows: its two-stage net preprocessor (process_net) is built
+    # for the host and cannot run on the Linux build machine (as with alexandria).
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

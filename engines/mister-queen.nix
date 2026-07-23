@@ -65,6 +65,8 @@ mkEngine rec {
   '';
 
   meta = with lib; {
+    # Gated off Windows: its build's binary path isn't found under the mingw cross.
+    platforms = platforms.unix;
     description = "MisterQueen, Michael Fogleman's independent magic-bitboard UCI engine in C with an embedded opening book";
     homepage = "https://github.com/fogleman/MisterQueen";
     # LICENSE.md in the repo root is verbatim MIT,
