@@ -110,6 +110,10 @@ stdenv.mkDerivation (passthruArgs // {
       # / not applicable; the tokens just make the mingw linker fail.
       sed -i -E 's/-l(rt|dl)\b//g' "$mk"
     done
+    # MSVC-oriented sources #include <Windows.h>; mingw's SDK header is the
+    # lowercase <windows.h>, and the Nix store is case-sensitive, so normalise.
+    grep -rlZ '<Windows.h>' --include='*.c' --include='*.cpp' --include='*.h' . 2>/dev/null \
+      | xargs -0 -r sed -i 's/<Windows.h>/<windows.h>/g' || true
   '' + ''
     # Respect the Nix toolchain rather than a hardcoded gcc. targetPrefix is
     # what makes the mingw cross-build work.

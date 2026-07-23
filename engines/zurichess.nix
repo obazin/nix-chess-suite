@@ -74,7 +74,8 @@ buildGoModule rec {
     # "Copyright (c) 2014-2015, The Zurichess Authors".
     license = licenses.bsd3;
     mainProgram = pname;
-    platforms = platforms.unix ++ platforms.windows;
+    # Gated off Windows: Go cross to Windows fails in nixpkgs at the Go toolchain bootstrap.
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

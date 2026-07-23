@@ -72,7 +72,8 @@ buildGoModule rec {
     # https://github.com/ChizhovVadim/CounterGo/blob/master/LICENSE
     license = licenses.gpl3Plus;
     mainProgram = "counter";
-    platforms = platforms.unix ++ platforms.windows;
+    # Gated off Windows: Go+cgo cross to Windows fails in nixpkgs at the Go toolchain bootstrap.
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

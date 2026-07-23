@@ -90,6 +90,8 @@ mkEngine rec {
   enableParallelBuilding = false;
 
   meta = with lib; {
+    # Gated off Windows: its two-stage net preprocessor is built for the host (Windows) and cannot run on the Linux build machine.
+    platforms = platforms.unix;
     description = "Alexandria, PGG106's NNUE UCI engine; net preprocessed by an in-tree helper then embedded";
     homepage = "https://github.com/PGG106/Alexandria";
     # LICENSE.md is the GPLv3 text. Unlike most engines here, neither the

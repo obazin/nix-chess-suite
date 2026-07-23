@@ -83,7 +83,8 @@ buildGoModule rec {
     # https://github.com/algerbrex/blunder/blob/main/LICENSE
     license = licenses.mit;
     mainProgram = "blunder";
-    platforms = platforms.unix ++ platforms.windows;
+    # Gated off Windows: Go cross to Windows fails in nixpkgs at the Go toolchain bootstrap.
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

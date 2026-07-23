@@ -81,7 +81,8 @@ stdenv.mkDerivation rec {
     # Richard Delorme". https://github.com/abulmo/Dumb/blob/master/LICENSE
     license = licenses.mit;
     mainProgram = "dumb";
-    platforms = platforms.unix ++ platforms.windows;
+    # Gated off Windows: D (ldc) cross to Windows is not wired up in this toolchain.
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

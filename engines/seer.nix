@@ -78,6 +78,8 @@ mkEngine rec {
   '';
 
   meta = with lib; {
+    # Gated off Windows: its build evaluates python3, which is marked broken for the mingw cross.
+    platforms = platforms.unix;
     description = "Seer, Connor McMonigle's NNUE UCI engine using retrograde-learned WDL evaluation";
     homepage = "https://github.com/connormcmonigle/seer-nnue";
     # LICENSE.md is the GPLv3 text; src/seer.cc's header carries the

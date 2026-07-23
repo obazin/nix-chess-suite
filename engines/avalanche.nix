@@ -88,7 +88,8 @@ stdenv.mkDerivation rec {
     # Yinuo Huang". https://github.com/SnowballSH/Avalanche/blob/master/LICENSE
     license = licenses.mit;
     mainProgram = "avalanche";
-    platforms = platforms.unix ++ platforms.windows;
+    # Gated off Windows: Zig cross to Windows needs a libc install nixpkgs zig lacks here.
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }
