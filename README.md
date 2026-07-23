@@ -139,10 +139,14 @@ can't just copy one to a non-Nix machine and run it. What works, per platform:
   nix bundle github:obazin/nix-chess-suite#stockfish   # -> ./stockfish (portable)
   ```
 
-- **Windows** — the `.exe`s are mingw cross-builds that link against Windows
-  DLLs, so they're genuinely portable. They're attached to each
-  [release](../../releases) for the engines that support Windows (see the
-  platform table); keep the accompanying `lib*.dll`s next to them.
+- **Windows** — download the zip from the latest [release](../../releases): ~46
+  engines cross-compiled to mingw-UCRT, each in its own folder with any
+  companion net and the mingw runtime DLLs it needs bundled alongside, so they
+  run on a stock Windows box (no Nix, no toolchain). Extract and point your GUI
+  at each engine's `.exe`. Releases are cut on demand by pushing a version tag
+  (e.g. `git tag 2026.07.23 && git push origin 2026.07.23`), which triggers
+  `.github/workflows/release.yml`. The binaries are unsigned, so SmartScreen may
+  warn on first run.
 
 - **macOS, no Nix** — macOS binaries embed `/nix/store` dylib paths and aren't
   easily made portable; the realistic path is to install Nix (one command) and

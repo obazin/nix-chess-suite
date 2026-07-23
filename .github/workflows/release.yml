@@ -1,0 +1,128 @@
+name: release
+
+# Windows binary releases, cut manually by pushing a version tag:
+#
+#   git tag 2026.07.23 && git push origin 2026.07.23
+#
+# Nix users on Linux/macOS never need these — they `nix profile install` and
+# pull from the R2 cache. Releases exist only for the audience Nix can't reach:
+# Windows chess-GUI users (Lucas Chess, Arena, Nibbler, BanksiaGUI, …) who want
+# a plain .exe to point their GUI at. The .exe closures are already built and
+# cached in R2 by the main `build` workflow's windows job, so this job pulls
+# them from cache rather than rebuilding, packages one folder per engine (so a
+# net/book that must sit beside the .exe travels with it), and publishes.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'          # v1, v1.2, …
+      - '[0-9][0-9][0-9][0-9].*'  # date tags: 2026.07.23
+
+permissions:
+  contents: write          # required to create the GitHub Release
+
+jobs:
+  windows-release:
+    name: windows release (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pull the prebuilt, CI-pushed Windows .exe closures from R2 instead of
+      # recompiling 46 mingw cross-builds.
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            extra-substituters = https://pub-428250a0977d4667937b8ce7e16887ce.r2.dev
+            extra-trusted-public-keys = nix-chess-suite-1:5uNzouWBsIpF0iwdnTgQj2A8ZSdvFFLfV5kkiapqW9U=
+
+      - name: Package Windows engines
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          root="nix-chess-suite-windows-x86_64-${tag}"
+          mkdir -p "dist/${root}"
+
+          # win-* packages exist only on x86_64-linux (the cross host).
+          engines=$(nix eval --raw --impure --expr \
+            'builtins.concatStringsSep "\n" (builtins.filter
+               (n: builtins.substring 0 4 n == "win-")
+               (builtins.attrNames (builtins.getFlake (toString ./.)).packages.x86_64-linux))')
+
+          manifest="dist/${root}/MANIFEST.txt"
+          echo "nix-chess-suite — Windows x86_64 engines (${tag})" > "$manifest"
+          echo "built: cross-compiled to mingw-UCRT from the Nix flake" >> "$manifest"
+          echo "" >> "$manifest"
+          printf '%-22s %s\n' "engine" "version" >> "$manifest"
+          printf '%-22s %s\n' "------" "-------" >> "$manifest"
+
+          ok=0; fail=0; failed=""
+          for e in $engines; do
+            name="${e#win-}"
+            echo "::group::$e"
+            if out=$(nix build ".#$e" --no-link --print-out-paths --print-build-logs); then
+              mkdir -p "dist/${root}/${name}"
+              # Copy the whole bin/ (exe + any companion net/book), dereferencing
+              # the alias symlinks mkEngine leaves so the zip holds real files.
+              cp -rL "$out"/bin/. "dist/${root}/${name}/"
+              ver=$(nix eval --raw ".#$e.version" 2>/dev/null || echo "?")
+              printf '%-22s %s\n' "$name" "$ver" >> "$manifest"
+              ok=$((ok+1)); echo "ok: $e"
+            else
+              echo "::error title=cross-build failed::$e"
+              fail=$((fail+1)); failed="$failed ${name}"
+            fi
+            echo "::endgroup::"
+          done
+          echo "=== packaged: $ok engines, $fail failed ==="
+          [ -n "$failed" ] && echo "Failed:$failed"
+
+          # Bundle the mingw runtime DLLs each exe needs, so the binaries run on
+          # a stock Windows box (see ci/bundle-win-dlls.sh). The DLL pool is the
+          # mingw toolchain's own closure; objdump comes from the cross binutils.
+          nixpkgs='(import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; })'
+          mingw_cc=$(nix build --no-link --print-out-paths --impure \
+            --expr "${nixpkgs}.pkgsCross.mingw-ucrt-x86_64.stdenv.cc.cc")
+          pool=$(nix path-info -r "$mingw_cc" | tr '\n' ' ')
+          chmod +x ci/bundle-win-dlls.sh
+          nix shell --impure \
+            --expr "${nixpkgs}.pkgsCross.mingw-ucrt-x86_64.buildPackages.binutils" \
+            -c ./ci/bundle-win-dlls.sh "$pool" dist/"${root}"/*/
+
+          # One zip for the whole set + a checksum.
+          ( cd dist && zip -qr "${root}.zip" "${root}" )
+          ( cd dist && sha256sum "${root}.zip" > "${root}.zip.sha256" )
+          echo "COUNT=$ok" >> "$GITHUB_ENV"
+          echo "ROOT=$root" >> "$GITHUB_ENV"
+
+      - name: Write release notes
+        run: |
+          set -euo pipefail
+          cat > dist/NOTES.md <<EOF
+          Prebuilt **Windows (x86-64)** UCI engine binaries — ${COUNT} engines, cross-compiled to mingw-UCRT from this repo's Nix flake.
+
+          **Linux / macOS users don't need this download.** Install via Nix instead — see the [README](https://github.com/${GITHUB_REPOSITORY}#readme).
+
+          ### Use
+          Download \`${ROOT}.zip\`, extract it, and point your chess GUI (Lucas Chess, Arena, Nibbler, BanksiaGUI, …) at the \`.exe\` inside each engine's folder. Each engine is in its own folder so any companion file (e.g. arasan's NNUE net) stays beside its executable. Most engines embed their net and are a single \`.exe\`. See \`MANIFEST.txt\` for the engine/version list and [Engines.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/Engines.md) for strengths and algorithms.
+
+          ### Notes
+          - The binaries are **unsigned**, so Windows SmartScreen/Defender may warn on first run ("More info" → "Run anyway").
+          - Verify the download against \`${ROOT}.zip.sha256\`.
+          - This repo's packaging is MIT; each engine keeps its own upstream licence (GPL, BSD, Zlib, Apache, …) — see the per-engine \`engines/<name>.nix\`.
+          EOF
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "dist/${ROOT}.zip" "dist/${ROOT}.zip.sha256" --clobber
+          else
+            gh release create "$tag" \
+              --title "Windows engines — $tag" \
+              --notes-file dist/NOTES.md \
+              "dist/${ROOT}.zip" "dist/${ROOT}.zip.sha256"
+          fi
