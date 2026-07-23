@@ -60,7 +60,9 @@ mkEngine rec {
     # notice, so GPL-3.0-or-later.
     license = licenses.gpl3Plus;
     mainProgram = "marvin";
-    platforms = platforms.unix ++ platforms.windows;
+    # Gated off Windows: relies on POSIX APIs (sockets/FD_SET, sysconf,
+    # sys/resource.h) with no Windows path. Builds on unix.
+    platforms = platforms.unix;
     maintainers = [ ];
   };
 }

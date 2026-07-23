@@ -78,6 +78,8 @@ mkEngine rec {
   '';
 
   meta = with lib; {
+    # Gated off Windows: POSIX-only (sockets/FD_SET, sysconf, sys/resource.h).
+    platforms = platforms.unix;
     description = "EXchess/Leaf (classic hand-crafted evaluation, NNUE disabled), Daniel C. Homan's independent-lineage UCI engine";
     homepage = "https://github.com/dan-homan/Leaf";
     # src/license.txt is the verbatim GPLv3 text; source headers (e.g.

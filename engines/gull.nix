@@ -82,7 +82,12 @@ mkEngine rec {
     # x86_64-linux either. Declared for x86_64-windows only (best-effort,
     # unverified) — it builds on no CI-testable platform. Kept for its distinct
     # public-domain lineage; revisit if the fixed-address link is repaired.
-    platforms = [ "x86_64-windows" ];
+    # No CI-buildable platform: x86-only (no ARM/scalar), its Makefile.linux
+    # fixed-address --defsym linking breaks on modern GNU ld, and its Linux.h
+    # does not compile under mingw. Left in the registry for its distinct
+    # public-domain lineage but built nowhere until one of those is repaired.
+    platforms = [ ];
+    broken = true;
     maintainers = [ ];
   };
 }

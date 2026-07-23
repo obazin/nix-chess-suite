@@ -72,6 +72,13 @@ stdenv.mkDerivation (passthruArgs // {
   # and link -lpthread build unchanged.
   buildInputs = buildInputs
     ++ lib.optional stdenv.hostPlatform.isWindows windows.pthreads;
+
+  # Force-link the two libraries that mingw builds routinely need but engine
+  # Makefiles don't name (they assume Linux, where pthread is in libc and
+  # sockets need no extra lib): winpthreads (-lpthread) for engines that call
+  # pthread_* without linking it, and Winsock (-lws2_32) for any that use
+  # sockets. Both are harmless when unused; only added for the Windows cross.
+  NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-lpthread -lws2_32";
 } // lib.optionalAttrs (sourceRoot != null) {
   inherit sourceRoot;
 } // {

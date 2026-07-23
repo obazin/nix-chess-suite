@@ -75,6 +75,8 @@ mkEngine rec {
   binaries = [ "maxima2" ];
 
   meta = with lib; {
+    # Gated off Windows: POSIX-only (sockets/FD_SET, sysconf, sys/resource.h).
+    platforms = platforms.unix;
     description = "Maxima 2, Erik van het Hof and Hermen Reitsma's rewritten QueenMaxima-lineage magic-bitboard UCI engine";
     homepage = "https://github.com/hof/qm2";
     # Every source file (e.g. src/main.cpp, src/board.cpp) carries the header

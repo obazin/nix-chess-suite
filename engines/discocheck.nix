@@ -29,6 +29,8 @@ mkEngine rec {
   binaries = [ "discocheck" ];
 
   meta = with lib; {
+    # Gated off Windows: POSIX-only (sockets/FD_SET, sysconf, sys/resource.h).
+    platforms = platforms.unix;
     description = "DiscoCheck 5.2, Lucas Braesch's compact UCI engine (predecessor of Demolito)";
     homepage = "https://www.chessprogramming.org/DiscoCheck";
     # Every source file carries the GPLv3-or-later header ("either version 3 of

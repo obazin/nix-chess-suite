@@ -122,6 +122,8 @@ mkEngine rec {
   '';
 
   meta = with lib; {
+    # Gated off Windows: POSIX-only (sockets/FD_SET, sysconf, sys/resource.h).
+    platforms = platforms.unix;
     description = "Arasan, Jon Dart's NNUE UCI chess engine, built with the ARM NEON target";
     homepage = "https://www.arasanchess.org/";
     # LICENSE is a verbatim MIT-style permissive grant: "Copyright 1994-2026 by
