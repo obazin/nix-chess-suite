@@ -78,12 +78,23 @@ jobs:
           [ -n "$failed" ] && echo "Failed:$failed"
 
           # Bundle the mingw runtime DLLs each exe needs, so the binaries run on
-          # a stock Windows box (see ci/bundle-win-dlls.sh). The DLL pool is the
-          # mingw toolchain's own closure; objdump comes from the cross binutils.
+          # a stock Windows box (see ci/bundle-win-dlls.sh). Realise the toolchain
+          # packages that carry the runtime DLLs (gcc -> libstdc++/libgcc; the
+          # threads packages -> libwinpthread/libmcfgthread) and search their
+          # out-paths directly. (Walking the gcc closure with `path-info -r`
+          # trips over unrealised man/info outputs.) objdump comes from the cross
+          # binutils.
           nixpkgs='(import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; })'
-          mingw_cc=$(nix build --no-link --print-out-paths --impure \
-            --expr "${nixpkgs}.pkgsCross.mingw-ucrt-x86_64.stdenv.cc.cc")
-          pool=$(nix path-info -r "$mingw_cc" | tr '\n' ' ')
+          pool=""
+          for attr in \
+            stdenv.cc.cc \
+            windows.mcfgthreads \
+            windows.pthreads; do
+            p=$(nix build --no-link --print-out-paths --impure \
+              --expr "${nixpkgs}.pkgsCross.mingw-ucrt-x86_64.${attr}" 2>/dev/null || true)
+            pool="$pool $p"
+          done
+          echo "pool paths:$pool"
           chmod +x ci/bundle-win-dlls.sh
           nix shell --impure \
             --expr "${nixpkgs}.pkgsCross.mingw-ucrt-x86_64.buildPackages.binutils" \
