@@ -93,7 +93,7 @@ add_subdirectory("src")'
   # The binary lands in ${CMAKE_BINARY_DIR}/bin (i.e. the CMake build dir).
   installPhase = ''
     runHook preInstall
-    install -Dm755 bin/caissa "$out/bin/caissa"
+    install -Dm755 bin/caissa${stdenv.hostPlatform.extensions.executable} "$out/bin/caissa${stdenv.hostPlatform.extensions.executable}"
     runHook postInstall
   '';
 
