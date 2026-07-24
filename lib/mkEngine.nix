@@ -87,10 +87,17 @@ stdenv.mkDerivation (passthruArgs // {
   #                      libgcc_s_seh-1.dll unwinder (-static alone can't, since
   #                      libgcc_s exists only as a DLL + import lib)
   #   -static-libstdc++  belt-and-suspenders for the C++ runtime
-  # The system import libs (ws2_32, winmm, kernel32) still resolve to the
-  # always-present Windows DLLs. Only added for the Windows cross.
+  # These are gcc *driver* flags (ld rejects -static-lib*), so they go in
+  # NIX_CFLAGS_LINK, which the cc-wrapper adds to the driver at link time (and
+  # which checkLinkType reads to switch the whole link to static). NIX_LDFLAGS
+  # goes straight to ld, so it carries only real linker libs — the ones the
+  # engine Makefiles don't name (pthread) plus the Windows system import libs
+  # (ws2_32, winmm), which still resolve to the always-present system DLLs.
+  # Windows cross only.
+  NIX_CFLAGS_LINK = lib.optionalString stdenv.hostPlatform.isWindows
+    "-static -static-libgcc -static-libstdc++";
   NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows
-    "-static -static-libgcc -static-libstdc++ -lpthread -lws2_32 -lwinmm";
+    "-lpthread -lws2_32 -lwinmm";
 } // lib.optionalAttrs (sourceRoot != null) {
   inherit sourceRoot;
 } // {
