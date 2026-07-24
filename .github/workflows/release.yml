@@ -96,8 +96,10 @@ jobs:
           done
           echo "pool paths:$pool"
           chmod +x ci/bundle-win-dlls.sh
+          # binutils -> objdump; stdenv.cc -> x86_64-w64-mingw32-gcc for
+          # `-print-file-name` (locates libgcc_s_seh-1.dll in gcc's own dirs).
           nix shell --impure \
-            --expr "${nixpkgs}.pkgsCross.mingw-ucrt-x86_64.buildPackages.binutils" \
+            --expr "with ${nixpkgs}.pkgsCross.mingw-ucrt-x86_64; [ buildPackages.binutils stdenv.cc ]" \
             -c ./ci/bundle-win-dlls.sh "$pool" dist/"${root}"/*/
 
           # One zip for the whole set + a checksum.

@@ -13,19 +13,36 @@
 # ws2_32, ucrtbase, …) and is left alone.
 #
 # Usage: bundle-win-dlls.sh "<pool-search-dirs>" <engine-dir> [<engine-dir> ...]
-#   OBJDUMP env var overrides the objdump binary (default x86_64-w64-mingw32-objdump).
+#   OBJDUMP / CC env vars override the tools (default x86_64-w64-mingw32-{objdump,gcc}).
 set -uo pipefail
 
 OBJDUMP="${OBJDUMP:-x86_64-w64-mingw32-objdump}"
+CC="${CC:-x86_64-w64-mingw32-gcc}"
 POOL_DIRS="${1:?pool search dirs required}"; shift
 
-# name (lowercase) -> full path of every candidate runtime DLL in the toolchain.
+# name (lowercase) -> full path of every candidate runtime DLL found by scanning
+# the given toolchain dirs. This catches the threads runtime; libgcc_s/libstdc++
+# live in gcc's own lib dirs and are found via `$CC -print-file-name` instead
+# (resolve() below), which is the canonical way to locate a toolchain file.
 declare -A POOL
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   POOL["$(basename "$f" | tr '[:upper:]' '[:lower:]')"]="$f"
 done < <(find $POOL_DIRS -iname '*.dll' 2>/dev/null)
-echo "DLL pool: ${#POOL[@]} candidate runtime DLLs"
+echo "DLL pool: ${#POOL[@]} candidate runtime DLLs (plus \`$CC -print-file-name\`)"
+
+# Locate a runtime DLL by the name objdump reported ($1). Try the scanned pool,
+# then ask the compiler for the file in its own search dirs (libgcc_s_seh-1.dll,
+# libstdc++-6.dll, libwinpthread-1.dll, …). Prints the path, or nothing if the
+# DLL isn't a toolchain file (i.e. it's a Windows system DLL).
+resolve() {
+  local name="$1" low p
+  low="$(echo "$name" | tr '[:upper:]' '[:lower:]')"
+  p="${POOL[$low]:-}"
+  if [ -n "$p" ]; then echo "$p"; return; fi
+  p="$("$CC" -print-file-name="$name" 2>/dev/null)"
+  if [ -n "$p" ] && [ "$p" != "$name" ] && [ -e "$p" ]; then echo "$p"; fi
+}
 
 # Windows-provided DLLs: never bundle, never warn about.
 is_system() {
@@ -46,9 +63,9 @@ bundle() {
   "$OBJDUMP" -p "$f" 2>/dev/null | awk '/DLL Name:/ {print $3}' | while read -r dep; do
     low="$(echo "$dep" | tr '[:upper:]' '[:lower:]')"
     is_system "$low" && continue
-    src="${POOL[$low]:-}"
+    src="$(resolve "$dep")"
     if [ -z "$src" ]; then
-      echo "  WARN: $(basename "$f") imports $dep, not in the toolchain pool (assuming system DLL)" >&2
+      echo "  WARN: $(basename "$f") imports $dep, unresolved by pool/compiler (assuming system DLL)" >&2
       continue
     fi
     base="$(basename "$src")"
