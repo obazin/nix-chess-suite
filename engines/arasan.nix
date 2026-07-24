@@ -132,7 +132,10 @@ extern "C" {
   installPhase = ''
     runHook preInstall
     mkdir -p "$out/bin"
-    install -Dm755 ../bin/arasanx-64-* "$out/bin/arasan"
+    # Keep the platform's executable extension so the Windows cross installs
+    # `arasan.exe` (not `arasan`): GUIs look for .exe, and the release DLL
+    # bundler only processes *.exe. Empty on unix, ".exe" on mingw.
+    install -Dm755 ../bin/arasanx-64-* "$out/bin/arasan${stdenv.hostPlatform.extensions.executable}"
     cp ../network/arasanv5-20251222.nnue "$out/bin/"
     runHook postInstall
   '';
