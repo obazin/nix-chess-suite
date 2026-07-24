@@ -140,13 +140,14 @@ can't just copy one to a non-Nix machine and run it. What works, per platform:
   ```
 
 - **Windows** — download the zip from the latest [release](../../releases): ~46
-  engines cross-compiled to mingw-UCRT, each in its own folder with any
-  companion net and the mingw runtime DLLs it needs bundled alongside, so they
-  run on a stock Windows box (no Nix, no toolchain). Extract and point your GUI
-  at each engine's `.exe`. Releases are cut on demand by pushing a version tag
-  (e.g. `git tag 2026.07.23 && git push origin 2026.07.23`), which triggers
-  `.github/workflows/release.yml`. The binaries are unsigned, so SmartScreen may
-  warn on first run.
+  engines cross-compiled to mingw-UCRT and **statically linked**, so each is a
+  single self-contained `.exe` that runs on a stock Windows box with **no
+  accompanying DLLs** (like the official Stockfish download). Extract and point
+  your GUI at each engine's `.exe`; the few engines that read their net from
+  disk (e.g. arasan) ship it beside the exe in the same folder. Releases are cut
+  on demand by pushing a version tag (e.g. `git tag 2026.07.23 && git push
+  origin 2026.07.23`), which triggers `.github/workflows/release.yml`. The
+  binaries are unsigned, so SmartScreen may warn on first run.
 
 - **macOS, no Nix** — macOS binaries embed `/nix/store` dylib paths and aren't
   easily made portable; the realistic path is to install Nix (one command) and
