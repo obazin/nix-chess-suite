@@ -118,6 +118,12 @@ stdenv.mkDerivation (passthruArgs // {
       # librt (clock/timers) and libdl (dlopen) are folded into the Windows CRT
       # / not applicable; the tokens just make the mingw linker fail.
       sed -i -E 's/-l(rt|dl)\b//g' "$mk"
+      # Drop an explicit -lstdc++: we always link via the C++ driver, which adds
+      # libstdc++ itself. With our -static link, keeping an explicit one makes it
+      # resolve to the import lib (libstdc++.dll.a) while the driver's implicit
+      # one resolves to the static archive (libstdc++.a) -> "multiple definition"
+      # (hit by arasan and loki). `+` is literal in this BRE sed.
+      sed -i 's/-lstdc++//g' "$mk"
     done
     # MSVC-oriented sources #include <Windows.h>; mingw's SDK header is the
     # lowercase <windows.h>, and the Nix store is case-sensitive, so normalise.
