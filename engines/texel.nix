@@ -33,6 +33,9 @@ stdenv.mkDerivation rec {
   # texel's sysport.h has a MINGW branch (Windows threads); without -DMINGW it
   # falls through __GNUC__ to the POSIX path and fails on <pthread.h>.
   env.NIX_CFLAGS_COMPILE = lib.optionalString stdenv.hostPlatform.isWindows "-DMINGW";
+  # -static: self-contained .exe (nixpkgs' mingw ships libstdc++/libgcc as
+  # static+import libs, not shippable DLLs), matching lib/mkEngine.nix.
+  env.NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-static";
 
   # The CPU-feature options all default OFF (a portable scalar build). On
   # aarch64 turn on the flags that carry no -march requirement: USE_NEON only

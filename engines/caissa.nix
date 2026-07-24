@@ -49,6 +49,9 @@ stdenv.mkDerivation rec {
   # mingw gcc flags a benign off-by-one array-bounds access (index 64 into
   # Bitboard[64]) that -Werror rejects; relax it, only for the Windows cross.
   env.NIX_CFLAGS_COMPILE = lib.optionalString stdenv.hostPlatform.isWindows "-Wno-error";
+  # -static: self-contained .exe (nixpkgs' mingw ships libstdc++/libgcc as
+  # static+import libs, not shippable DLLs), matching lib/mkEngine.nix.
+  env.NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-static";
 
   # Build only the engine (and its backend dependency), not the utils/trainer
   # helper binaries — they are training tooling we do not ship and only add

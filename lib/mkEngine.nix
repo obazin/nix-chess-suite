@@ -78,8 +78,16 @@ stdenv.mkDerivation (passthruArgs // {
   # pthread_* callers, Winsock (-lws2_32) for socket users, and winmm
   # (-lwinmm) for the multimedia timer (timeGetTime/timeBeginPeriod). All
   # harmless when unused; only added for the Windows cross.
+  #
+  # `-static` makes the .exe self-contained so it runs on a stock Windows box:
+  # nixpkgs' mingw gcc ships libstdc++/libgcc/libwinpthread as static + import
+  # libs, NOT as distributable DLLs, so a dynamically-linked build imports
+  # libstdc++-6.dll / libgcc_s_seh-1.dll that don't exist to ship. Static links
+  # them in; the system import libs (ws2_32, winmm, kernel32) still resolve to
+  # the always-present Windows DLLs. This is what makes the release binaries
+  # usable without a Nix/mingw toolchain.
   NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows
-    "-lpthread -lws2_32 -lwinmm";
+    "-static -lpthread -lws2_32 -lwinmm";
 } // lib.optionalAttrs (sourceRoot != null) {
   inherit sourceRoot;
 } // {

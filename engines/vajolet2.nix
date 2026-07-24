@@ -70,7 +70,9 @@ stdenv.mkDerivation rec {
   '';
 
   buildInputs = lib.optional stdenv.hostPlatform.isWindows windows.pthreads;
-  NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-lpthread";
+  # -static: self-contained .exe (nixpkgs' mingw ships libstdc++/libgcc as
+  # static+import libs, not shippable DLLs), matching lib/mkEngine.nix.
+  NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-static -lpthread";
 
   doInstallCheck = stdenv.hostPlatform.emulatorAvailable buildPackages;
 
