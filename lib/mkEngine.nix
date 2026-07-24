@@ -79,15 +79,18 @@ stdenv.mkDerivation (passthruArgs // {
   # (-lwinmm) for the multimedia timer (timeGetTime/timeBeginPeriod). All
   # harmless when unused; only added for the Windows cross.
   #
-  # `-static` makes the .exe self-contained so it runs on a stock Windows box:
-  # nixpkgs' mingw gcc ships libstdc++/libgcc/libwinpthread as static + import
-  # libs, NOT as distributable DLLs, so a dynamically-linked build imports
-  # libstdc++-6.dll / libgcc_s_seh-1.dll that don't exist to ship. Static links
-  # them in; the system import libs (ws2_32, winmm, kernel32) still resolve to
-  # the always-present Windows DLLs. This is what makes the release binaries
-  # usable without a Nix/mingw toolchain.
+  # Link a fully self-contained .exe that runs on a stock Windows box with NO
+  # accompanying DLLs (matching how upstream ships, e.g. official Stockfish):
+  #   -static            static-link everything that has a static archive
+  #                      (libstdc++, libwinpthread, mcfgthread, …)
+  #   -static-libgcc     use libgcc.a/libgcc_eh.a instead of the shared
+  #                      libgcc_s_seh-1.dll unwinder (-static alone can't, since
+  #                      libgcc_s exists only as a DLL + import lib)
+  #   -static-libstdc++  belt-and-suspenders for the C++ runtime
+  # The system import libs (ws2_32, winmm, kernel32) still resolve to the
+  # always-present Windows DLLs. Only added for the Windows cross.
   NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows
-    "-static -lpthread -lws2_32 -lwinmm";
+    "-static -static-libgcc -static-libstdc++ -lpthread -lws2_32 -lwinmm";
 } // lib.optionalAttrs (sourceRoot != null) {
   inherit sourceRoot;
 } // {

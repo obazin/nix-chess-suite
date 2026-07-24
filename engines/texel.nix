@@ -35,7 +35,7 @@ stdenv.mkDerivation rec {
   env.NIX_CFLAGS_COMPILE = lib.optionalString stdenv.hostPlatform.isWindows "-DMINGW";
   # -static: self-contained .exe (nixpkgs' mingw ships libstdc++/libgcc as
   # static+import libs, not shippable DLLs), matching lib/mkEngine.nix.
-  env.NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-static";
+  env.NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-static -static-libgcc -static-libstdc++";
 
   # The CPU-feature options all default OFF (a portable scalar build). On
   # aarch64 turn on the flags that carry no -march requirement: USE_NEON only

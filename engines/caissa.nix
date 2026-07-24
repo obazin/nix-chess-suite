@@ -51,7 +51,7 @@ stdenv.mkDerivation rec {
   env.NIX_CFLAGS_COMPILE = lib.optionalString stdenv.hostPlatform.isWindows "-Wno-error";
   # -static: self-contained .exe (nixpkgs' mingw ships libstdc++/libgcc as
   # static+import libs, not shippable DLLs), matching lib/mkEngine.nix.
-  env.NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-static";
+  env.NIX_LDFLAGS = lib.optionalString stdenv.hostPlatform.isWindows "-static -static-libgcc -static-libstdc++";
 
   # Build only the engine (and its backend dependency), not the utils/trainer
   # helper binaries — they are training tooling we do not ship and only add
