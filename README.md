@@ -104,27 +104,37 @@ PGO). Everything is validated on real x86-64/GCC by the non-blocking
 `native-smoke` CI job, which *builds* these variants (never caching them) so the
 GCC PGO paths — untestable on the aarch64-darwin reference machine — stay green.
 
-### In your own flake / NixOS / home-manager
+### In your own flake (NixOS / nix-darwin / home-manager)
 
-The flake ships `overlays.default`, which adds a `chessEngines` attrset:
+**1. Add the input.** Don't make it `follows` your `nixpkgs` — the cache was built against the pin *inside* this flake, so overriding it changes every hash and you rebuild all ~79 from source.
 
 ```nix
-{
-  inputs.chess.url = "github:obazin/nix-chess-suite";
-  # ...
-  # NixOS or home-manager module:
-  nixpkgs.overlays = [ inputs.chess.overlays.default ];
-  environment.systemPackages = [
-    pkgs.chessEngines.stockfish
-    pkgs.chessEngines.arasan
-  ];
-  # or grab everything:
-  # environment.systemPackages = [ inputs.chess.packages.${pkgs.system}.all ];
-}
+inputs.chess.url = "github:obazin/nix-chess-suite";
 ```
 
-Then point your GUI (cutechess, en-croissant, BanksiaGUI, Arena, …) at the
-installed binaries, e.g. `~/.nix-profile/bin/stockfish`.
+**2. Add the cache yourself.** An input's own `nixConfig` is ignored, so without this you compile everything. Put it in your NixOS / nix-darwin config:
+
+```nix
+nix.settings = {
+  extra-substituters = [ "https://pub-428250a0977d4667937b8ce7e16887ce.r2.dev" ];
+  extra-trusted-public-keys = [ "nix-chess-suite-1:5uNzouWBsIpF0iwdnTgQj2A8ZSdvFFLfV5kkiapqW9U=" ];
+};
+```
+
+**3. Install.** Reference packages directly (`${pkgs.system}` is `aarch64-darwin`, `x86_64-linux`, or `aarch64-linux`):
+
+```nix
+# system-wide (NixOS/nix-darwin)      # or per-user (home-manager)
+environment.systemPackages = [        home.packages = [
+  inputs.chess.packages.${pkgs.system}.all      # every engine
+  # .stockfish / .lc0 / …             — pick individual engines
+  # .native / .stockfish-native       — CPU-tuned + PGO (compiles locally, not cached)
+];
+```
+
+Or via the overlay, which exposes a `chessEngines` attrset: `nixpkgs.overlays = [ inputs.chess.overlays.default ];` then `pkgs.chessEngines.stockfish`.
+
+Rebuild (`darwin-rebuild`/`nixos-rebuild`/`home-manager switch`), then point your GUI (en-croissant, BanksiaGUI, cutechess, Arena, …) at the binary, e.g. `/run/current-system/sw/bin/stockfish` or `~/.nix-profile/bin/stockfish`.
 
 ### Without Nix
 
