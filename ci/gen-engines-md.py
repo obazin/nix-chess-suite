@@ -63,8 +63,10 @@ def meta():
       let
         f = builtins.getFlake (toString ./.);
         p = f.packages.aarch64-darwin;
-        keep = n: ! (builtins.elem n [ "default" "all" ])
-                  && builtins.substring 0 4 n != "win-";
+        keep = n: ! (builtins.elem n [ "default" "all" "native" ])
+                  && builtins.substring 0 4 n != "win-"
+                  # lc0-net-* are weights, not engines (see lib/lc0-networks.nix)
+                  && builtins.substring 0 8 n != "lc0-net-";
         ns = builtins.filter keep (builtins.attrNames p);
         m = n: {
           homepage = p.${n}.meta.homepage or "";

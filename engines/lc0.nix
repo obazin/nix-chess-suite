@@ -1,5 +1,6 @@
 { lib, stdenv, fetchFromGitHub, meson, ninja, pkg-config, python3, zlib, gtest
 , eigen, abseil-cpp, ocl-icd, opencl-headers, opencl-clhpp, cudaPackages, lld
+, runCommand, makeWrapper
 , ... }:
 
 # Full-strength Leela Chess Zero, distinct from the Maia family.
@@ -81,8 +82,16 @@ let
     }:
     let
       name = if variant == null then "lc0" else "lc0-${variant}";
-    in
-    stdenv.mkDerivation {
+
+      # lc0's OpenCL backend takes classical/SE-ResNet networks with RELU and
+      # nothing else — see MakeOpenCLNetwork in
+      # src/neural/backends/opencl/network_opencl.cc. Every current T1/T2/T3/BT
+      # net is attention-body with attention policy and MISH, so pairing one
+      # with this variant is a hard failure at startup, not a slowdown. The
+      # other backends take both families.
+      acceptsAttentionNets = variant != "opencl";
+
+      self = stdenv.mkDerivation {
       pname = name;
       inherit version src;
 
@@ -182,6 +191,55 @@ let
         runHook postInstallCheck
       '';
 
+      passthru = {
+        inherit acceptsAttentionNets;
+
+        # Compose this variant with a network from lib/lc0-networks.nix:
+        #
+        #   lc0-metal.withNet lc0-net-t1-512
+        #
+        # Four binaries and seven nets compose to 24 usable pairs; enumerating
+        # them as packages would mean 24 derivations that still would not cover
+        # the space, because within one backend the right net depends on the
+        # card and the time control. Only the pair a consumer actually asks for
+        # gets built.
+        #
+        # The guard is the point of carrying `architecture` on the nets: an
+        # OpenCL build paired with an attention net fails at *startup*, well
+        # after the build succeeded and the cache was populated. Refusing it
+        # during evaluation turns a runtime surprise into a message that says
+        # what to do instead.
+        withNet = net:
+          if (net.architecture or "attention") == "attention" && !acceptsAttentionNets
+          then
+            throw ''
+              ${name} cannot run the network ${net.shortName or net.name}.
+
+              Its backend accepts only classical/SE-ResNet networks, and this is an
+              attention-body net. lc0 would build fine and then fail at startup with
+              "Network format NETWORK_ATTENTIONBODY_WITH_HEADFORMAT is not supported
+              by OpenCL backend".
+
+              Use an SE-ResNet net (lc0-net-744706, lc0-net-ld2, lc0-net-sv-t60), or
+              a backend that takes attention nets (lc0, lc0-cuda, lc0-metal).
+              See docs/lc0-networks.md.
+            ''
+          else
+            runCommand "${name}-${net.shortName}-${version}"
+              {
+                nativeBuildInputs = [ makeWrapper ];
+                meta = self.meta // {
+                  description = self.meta.description
+                    + ", preloaded with the ${net.shortName} network";
+                  mainProgram = "${name}-${net.shortName}";
+                };
+              } ''
+              mkdir -p "$out/bin"
+              makeWrapper "${self}/bin/${name}" "$out/bin/${name}-${net.shortName}" \
+                --add-flags "--weights=${net}"
+            '';
+      };
+
       meta = with lib; {
         description = "Leela Chess Zero, a neural-network MCTS engine"
           + (if variant == null then " (CPU)" else " (${variant} backend)")
@@ -192,7 +250,9 @@ let
         inherit platforms;
         maintainers = [ ];
       };
-    };
+      };
+    in
+    self;
 in
 {
   lc0 = mkLc0 {

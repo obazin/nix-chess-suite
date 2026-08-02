@@ -62,6 +62,22 @@
           lib = nixpkgs.lib;
           mkEngine = pkgs.callPackage ./lib/mkEngine.nix { };
           engines = import ./engines { inherit pkgs mkEngine; };
+
+          # Lc0 networks, exposed as packages but deliberately kept out of
+          # `engines`: they are data, not engines, so they stay out of the
+          # aggregate bundle and out of `checks` (which is the list CI
+          # iterates). Nothing here is ever fetched by a runner or pushed to
+          # the cache, and `nix profile install .#default` does not hand
+          # anyone ~870 MB of weights. Compose one with an engine variant via
+          # `lc0-metal.withNet lc0-net-t1-512`; see lib/lc0-networks.nix.
+          # removeAttrs for the same reason engines/default.nix does it: the file
+          # returns an attrset, so callPackage tacks `override`/
+          # `overrideDerivation` onto it, and merging that into `packages` would
+          # publish two functions as if they were packages.
+          lc0Networks = builtins.removeAttrs
+            (pkgs.callPackage ./lib/lc0-networks.nix { })
+            [ "override" "overrideDerivation" ];
+
           # Engines whose meta.platforms includes this system. The x86-only
           # engines (obsidian, gull, igel) drop out here on aarch64 so they
           # neither break `nix flake check` nor the aggregate.
@@ -265,6 +281,7 @@
         in
         engines
         // nativePackages
+        // lc0Networks
         // lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") winPackages
         // {
           all = allEngines;

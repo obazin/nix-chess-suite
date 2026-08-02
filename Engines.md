@@ -96,7 +96,6 @@ platforms they build on, their main evaluation method, and a link to source.
 | berserk-native | — | ? | ? | Linux, macOS | GPL-3.0-or-later | [link](https://github.com/jhonnold/berserk) |
 | caissa-native | — | ? | ? | Linux, macOS | MIT | [link](https://github.com/Witek902/Caissa) |
 | clover-native | — | ? | ? | Linux, macOS | GPL-3.0-or-later | [link](https://github.com/lucametehau/CloverEngine) |
-| native | — | ? | ? | — | — | — |
 | obsidian-native | — | ? | ? | Linux | GPL-3.0-only | [link](https://github.com/gab8192/Obsidian) |
 | plentychess-native | — | ? | ? | Linux, macOS | GPL-3.0-only | [link](https://github.com/Yoshie2000/PlentyChess) |
 | reckless-native | — | ? | ? | Linux, macOS | AGPL-3.0-only | [link](https://github.com/codedeliveryservice/Reckless) |

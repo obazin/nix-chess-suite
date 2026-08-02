@@ -10,6 +10,34 @@ $ lc0 --weights=/path/to/network.pb.gz
 
 Each variant installs under its own name — `lc0`, `lc0-opencl`, `lc0-metal`, `lc0-cuda` — so that all of them survive side by side in the `chess-engines-all` bundle. Substitute the one you built for `lc0` in the examples below.
 
+## Networks as packages
+
+Every network on this page is also packaged, as `lc0-net-<short>`, and composes with any engine variant:
+
+```nix
+# in a flake that takes this one as an input
+chess.packages.${system}.lc0-metal.withNet chess.packages.${system}.lc0-net-t1-512
+```
+
+```console
+# ad hoc, from the command line
+$ nix build --impure --expr 'let p = (builtins.getFlake "github:obazin/nix-chess-suite").packages.${builtins.currentSystem}; in p.lc0-metal.withNet p.lc0-net-t1-512'
+$ ./result/bin/lc0-metal-t1-512        # weights already wired in, no --weights needed
+```
+
+The result is the chosen binary wrapped with `--weights` pointing at the chosen net, installed as `lc0-<variant>-<net>`. Four binaries and seven nets compose to 24 usable pairs; shipping them as packages would be 24 derivations that still would not cover the space, since within one backend the right net depends on the card and the time control. Only the pair you ask for is ever built.
+
+`withNet` refuses an impossible pairing during evaluation rather than letting it fail at startup:
+
+```
+error: lc0-opencl cannot run the network t1-256.
+
+       Its backend accepts only classical/SE-ResNet networks, and this is an
+       attention-body net. …
+```
+
+The `lc0-net-*` packages are deliberately not part of the `chess-engines-all` bundle and not in `checks`, so CI never fetches them and `nix profile install .#default` does not hand you ~870 MB of weights you did not ask for. Each is a plain `fetchurl` against the hashes in the table below, so a net you have already downloaded by hand is byte-identical to the packaged one.
+
 All files below live under `https://storage.lczero.org/files/networks-contrib/`. Sizes are the actual `Content-Length` of each file; architectures are what `lc0 describenet --weights=<file>` reports, checked against every net listed here rather than inferred from the filename.
 
 ## The compatibility trap: OpenCL cannot run modern nets
