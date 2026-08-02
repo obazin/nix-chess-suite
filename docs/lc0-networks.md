@@ -66,6 +66,22 @@ Pre-attention networks only, per the compatibility section above.
 | `LD2` | 6.1 MB | SE-ResNet, 10 blocks × 128 filters |
 | `sv-t60-3010` | 131.0 MB | SE-ResNet, 30 blocks × 384 filters — **strongest OpenCL-compatible net here** |
 
+Both the acceptance rule and these entries have now been run rather than
+reasoned about — on an AMD Radeon 780M (gfx1103, integrated), ROCm ICD:
+
+| Net | Backend | nps (20k nodes, startpos) |
+|---|---|---:|
+| `744706` | `opencl` | 4,248 |
+| `744706` | `eigen` (CPU, 16 threads) | 243 |
+| `sv-t60-3010` | `opencl` | 408 |
+
+The 17× gap on the same net and the same box is the evidence the GPU is doing
+the work, and it is the number to compare against when checking a new card.
+`sv-t60-3010` loads and plays, so the "strongest OpenCL-compatible" label above
+is now a measurement; at 408 nps on *integrated* graphics it is still the slow
+end of usable, and `744706` is the better trade below about a second a move.
+A discrete AMD card should move both figures a long way up.
+
 ## Verifying a download
 
 Every hash below was computed from the file actually served at the URL above, in SRI form so it can be pasted straight into a `fetchurl` if you decide to pin one locally:
@@ -93,4 +109,21 @@ $ lc0 describenet --weights=network.pb.gz     # architecture, policy, value, act
 
 Throughput figures on this page come from one machine (aarch64-darwin, Apple silicon, integrated GPU), startpos, `lc0-metal` unless stated: `t1-256` reached 2,787 nps over a 20k-node run including warmup and 5,907 nps sustained on a longer one, against 545 nps on `blas` and 71 nps on `eigen` for the same workload; BT4 managed 159 nps. They are the ratios between backends and net sizes on one class of hardware, not a benchmark — a discrete GPU changes the picture entirely, and is the reason the large nets are listed at all.
 
-Architectures and sizes were verified for every network listed. The nets were exercised on the Metal and CPU backends; **no net on this page was run through `lc0-opencl` or `lc0-cuda`**, since neither backend builds on macOS — the OpenCL entries are chosen by checking each net's format against the backend's documented acceptance test in the Lc0 source, not by loading them.
+Architectures and sizes were verified for every network listed.
+
+The OpenCL half of this page used to carry a caveat that nothing on it had ever
+been loaded, only reasoned about from the acceptance test in the Lc0 source.
+That gap is closed: on x86_64-linux with an AMD Radeon 780M, `744706` and
+`sv-t60-3010` both load and play on `lc0-opencl` (figures in the OpenCL section
+above), and the rejection is verbatim what was predicted —
+`t1-256x10-distilled-swa-2432500` throws `Network format
+NETWORK_ATTENTIONBODY_WITH_HEADFORMAT is not supported by OpenCL backend` and
+exits. `describenet` output was confirmed against every claim in the
+compatibility table. The reasoning was sound; it is now also tested.
+
+`lc0-cuda` remains the untested one, and the caveat now belongs only to it. It
+compiles and reports `cuda`, `cuda-auto` and `cuda-fp16` among its backends, but
+no net on this page has been run through it — the Linux box available had an AMD
+GPU, so nothing here has executed a single CUDA kernel. The BT4 recommendation
+in the NVIDIA section is still an extrapolation from the Apple-GPU figure, not a
+measurement.

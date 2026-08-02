@@ -1,117 +1,187 @@
-# Open verification: the Linux-only Lc0 backends
+# Verification: the Linux-only Lc0 backends
 
-Lc0 is packaged as one build per backend (see `engines/lc0.nix`). Two of the four were developed and verified on aarch64-darwin; the other two **cannot be built or run on macOS at all**, so they have never been compiled, let alone executed. This page is the checklist for closing that gap on a Linux box. Everything here needs x86_64-linux (or aarch64-linux) with Nix and flakes.
+Lc0 is packaged as one build per backend (see `engines/lc0.nix`). Two of the
+four were developed on aarch64-darwin; the other two cannot be built or run on
+macOS at all, so they had never been compiled, let alone executed. This page
+was the checklist for closing that gap. It has now been run on x86_64-linux
+(Arch, 16 cores, AMD Radeon 780M / gfx1103 integrated GPU, ROCm ICD).
+
+**Both Linux backends were broken, in the same silent way, and neither the
+build nor CI said a word.** Details below; the fixes are in `engines/lc0.nix`.
 
 | Variant | Built | Ran a real search | Status |
 |---|---|---|---|
-| `lc0` (CPU) | yes, aarch64-darwin + CI on Linux | yes | verified |
+| `lc0` (CPU) | yes | yes | verified |
 | `lc0-metal` | yes, aarch64-darwin | yes | verified |
-| `lc0-opencl` | **never** | **never** | evaluates only; in CI's `checks`, so the next Linux CI run is its first build |
-| `lc0-cuda` | **never** | **never** | excluded from CI by design (unfree) — nothing will ever build it automatically |
+| `lc0-opencl` | **yes, after a fix** | **yes** | verified end to end |
+| `lc0-cuda` | **yes, after a fix** | no NVIDIA GPU available | compiles and registers `cuda`; kernels never executed |
 
-The OpenCL entries in `docs/lc0-networks.md` were chosen by checking each network's `describenet` output against the backend's acceptance test in the Lc0 source, **not** by loading them. That reasoning is sound but untested, and it is the single most likely thing on this page to be wrong.
+## What was wrong
 
-Prerequisite: the Lc0 rework lives on the `lc0-backends-and-updater-fix` branch, not yet on `main` — check it out before testing, and confirm `engines/lc0.nix` has the four variants and `flake.nix` has the `neverCached` exclusion.
+Three defects, all found by actually running the checklist.
 
-## 1. `lc0-opencl` compiles
+**1. `lc0-opencl` contained no OpenCL backend.** Lc0 gates the backend on
+`has_opencl`, which requires both a header probe and
+`cc.find_library('OpenCL', dirs: opencl_libdirs)`. `opencl_libdirs` defaults to
+`['/opt/cuda/lib64/', '/usr/local/cuda/lib64/']`, and a non-empty `dirs`
+argument makes meson search *those directories instead of* the compiler's own
+path — so `ocl-icd` sitting in `buildInputs` was never found. `-Dopencl=true`
+became a no-op, lc0 emitted a BLAS-only binary, the build succeeded, the
+install check passed, and the artifact was "OpenCL" in name only. Fixed with
+`-Dopencl_libdirs=${ocl-icd}/lib`.
+
+**2. `lc0-opencl` then failed to compile.** With the backend actually enabled,
+lc0's vendored `third_party/opencl.hpp` breaks against current
+`opencl-headers`: it references `CL_EXTERNAL_MEMORY_HANDLE_D3D11_TEXTURE_KHR`
+and friends, which now live in the Windows-only part of `cl_ext.h`. Lc0's
+`OpenCL.h` prefers a real `CL/opencl.hpp` when `__has_include` finds one, so
+adding `opencl-clhpp` to `buildInputs` sidesteps the vendored copy entirely.
+
+**3. `lc0-cuda` had the identical libdirs bug** (`cudnn_libdirs`, same
+`find_library(dirs:)` shape), plus two more once past it: the C++ half of the
+backend needs `crt/host_defines.h`, which ships with `cuda_nvcc` rather than
+`cuda_cudart` and so had to be added to `-Dcudnn_include`; and `native_cuda`
+defaults to **true**, passing `nvcc -arch=native`. On any builder without an
+NVIDIA card — CI, or anything that would cut a release — nvcc cannot detect a
+GPU, warns, and falls back to a default arch, baking one guessed architecture
+into a cached artifact. Now `-Dnative_cuda=false`, giving `-arch=all-major`.
+Verified with `cuobjdump`: the binary carries sm_50, 60, 70, 80, 90, 100 and
+120.
+
+**Guard against a repeat.** The install check now asserts that the variant's
+backend is actually present, not just that the binary speaks UCI — see
+`expectBackend` in `engines/lc0.nix`. Confirmed in both directions: it passes
+on the fixed build, and re-introducing the libdirs bug makes it fail with
+`FAIL: this is lc0-opencl, but 'opencl' is not among its backends`. Only
+`opencl` and `cuda` need it; `-Dmetal` is a meson *feature* set to `enabled`,
+which already fails loudly at configure time rather than silently skipping.
+
+## Results
+
+### 1. `lc0-opencl` compiles, with OpenCL in it — **pass**
 
 ```console
-$ nix build .#lc0-opencl --print-build-logs
-```
-
-The interesting part is not that it links, but that meson found OpenCL. If the backend is missing the build still succeeds — lc0 silently produces a BLAS-only binary when `has_opencl` is false — so the build alone proves nothing. Check the binary:
-
-```console
+$ nix build .#lc0-opencl
 $ printf 'uci\nquit\n' | ./result/bin/lc0 2>/dev/null | grep 'option name Backend type'
+option name Backend type combo default opencl var opencl var eigen var trivial …
 ```
 
-**Pass:** `opencl` appears in the `var` list. **Fail:** only `blas eigen trivial random …`, which means `-Dopencl=true` and `-Dopencl_include=` did not take and the variant is OpenCL in name only.
+`opencl` is present and is the default. Before the fix this read
+`default eigen var eigen var trivial …` — the failure mode the checklist
+predicted.
 
-## 2. `lc0-opencl` runs an OpenCL-compatible network
+### 2. `lc0-opencl` runs an OpenCL-compatible network — **pass**
 
-Needs an OpenCL ICD installed on the host — the derivation supplies the loader (`ocl-icd`), not a driver. On Arch that is the vendor package for your GPU (`opencl-nvidia`, `rocm-opencl-runtime`, `intel-compute-runtime`, or `opencl-mesa` for rusticl); `clinfo` should list at least one platform before you start.
+20k nodes from startpos, ROCm ICD on the 780M:
+
+| Net | Backend | nps | bestmove |
+|---|---|---:|---|
+| `744706` | `opencl` | 4,248 | e2e4 |
+| `744706` | `eigen` (16 threads) | 243 | e2e4 |
+| `sv-t60-3010` | `opencl` | 408 | d2d4 |
+
+**17× over the CPU on the same net and the same box** — the GPU is doing the
+work. `sv-t60-3010` (131 MB, 30×384) loads and plays, so its "strongest
+OpenCL-compatible net" billing in `docs/lc0-networks.md` is now measured rather
+than inferred; at 408 nps on integrated graphics it is the slow end of usable.
+
+Host note, not a packaging issue: nixpkgs' `ocl-icd` looks in
+`/run/opengl-driver/etc/OpenCL/vendors`. On Arch, point `OCL_ICD_VENDORS` at an
+ICD file. Arch's own `/etc/OpenCL/vendors/amdocl64.icd` refers to
+`/opt/rocm/lib/libamdocl64.so`, which drags in host `libstdc++`/glibc 2.44 and
+collides with the Nix closure's 2.42 — the classic non-NixOS driver problem.
+Using nixpkgs' `rocmPackages.clr` as the ICD avoids the mixing entirely, since
+only the kernel interface (`/dev/kfd`) is then host-side:
 
 ```console
-$ curl -LO https://storage.lczero.org/files/networks-contrib/sv-t60-3010.pb.gz
-$ nix hash file --sri --type sha256 sv-t60-3010.pb.gz
-  # expect: sha256-LlAsOU5eVXZkaUZCDC12P2MWW4lKPeqaFdMv7QWwewQ=
-
-$ { printf 'uci\nisready\nposition startpos\ngo nodes 20000\n'; sleep 60; printf 'quit\n'; } \
-    | ./result/bin/lc0 --weights=./sv-t60-3010.pb.gz --backend=opencl
+$ echo "$(nix build --no-link --print-out-paths nixpkgs#rocmPackages.clr)/lib/libamdocl64.so" > icd/amdocl64.icd
+$ export OCL_ICD_VENDORS=$PWD/icd
 ```
 
-**Pass:** a `bestmove` line, and `nps` clearly above what the same box does with `--backend=blas`. Worth recording both numbers — the CPU-vs-GPU ratio is the only evidence the GPU is actually doing the work.
+### 3. `lc0-opencl` rejects a modern network — **pass, verbatim**
 
-Smaller alternative if `sv-t60-3010` (131 MB, 30×384) is too slow: `744706.pb.gz` or `LD2.pb.gz`, 6.1 MB each, `sha256-Qw+awinq/BtMMFuiCt9+S0xdego/AyMHOYrI40m3Isg=` and `sha256-BLohTOEnfs6beB6KHsHvLdTY8pT0lsyOb+8yXymNtgo=`.
+`t1-256x10-distilled-swa-2432500` throws exactly what `docs/lc0-networks.md`
+predicted and exits:
 
-## 3. `lc0-opencl` rejects a modern network (negative test)
+```
+error Network format NETWORK_ATTENTIONBODY_WITH_HEADFORMAT is not supported by OpenCL backend.
+```
 
-This is the claim `docs/lc0-networks.md` is built on, and it should be confirmed rather than assumed.
+`describenet` also confirms every architecture claim in that document:
+`744706` and `sv-t60-3010` are `NETWORK_SE_WITH_HEADFORMAT` with
+`POLICY_CONVOLUTION`; `t1-256` is `NETWORK_ATTENTIONBODY_WITH_HEADFORMAT` /
+`POLICY_ATTENTION` / `DEFAULT_ACTIVATION_MISH`. The reasoning behind the
+per-backend split was sound, and is now tested rather than assumed.
+
+### 4. `lc0-cuda` evaluates and compiles — **pass**
 
 ```console
-$ curl -LO https://storage.lczero.org/files/networks-contrib/t1-256x10-distilled-swa-2432500.pb.gz
-$ { printf 'uci\nisready\nposition startpos\ngo nodes 100\n'; sleep 10; printf 'quit\n'; } \
-    | ./result/bin/lc0 --weights=./t1-256x10-distilled-swa-2432500.pb.gz --backend=opencl
+$ NIXPKGS_ALLOW_UNFREE=1 nix build --impure .#lc0-cuda
+$ printf 'uci\nquit\n' | ./result-cuda/bin/lc0 2>/dev/null | grep 'option name Backend type'
+option name Backend type combo default cuda-auto var cuda-auto var cuda var cuda-fp16 var eigen …
 ```
 
-**Pass:** it throws `Network format NETWORK_ATTENTIONBODY_WITH_HEADFORMAT is not supported by OpenCL backend` and exits. **Surprise result worth reporting:** if it loads and plays, the OpenCL section of `docs/lc0-networks.md` is too pessimistic and the whole per-backend split needs revisiting.
+This expression had never had a line of it executed. It needed the three fixes
+above; the checklist's guesses at the likely failure modes were close — the
+`cudnn_include` list did need a different form (an extra entry), though nvcc
+was found on `PATH` under `strictDeps` without trouble and `-Dnvcc_ccbin=` was
+never needed.
 
-## 4. `lc0-cuda` evaluates and compiles
+### 5. `lc0-cuda` runs on the GPU — **not run**
 
-Unfree, so it needs both the env var and `--impure` (the flake cannot read the env var otherwise):
-
-```console
-$ NIXPKGS_ALLOW_UNFREE=1 nix build --impure .#lc0-cuda --print-build-logs
-```
-
-This is the least-tested expression in the repo: the meson probes (`cc.find_library('cublas')`, `find_library('cudart')`, `find_program('nvcc')`) and the `-Dcudnn_include=` paths were written against Lc0's `meson.build` without ever being run. Plausible failure modes, in rough order of likelihood: nvcc not found because `cudaPackages.cuda_nvcc` does not land on `PATH` under `strictDeps`; cublas/cudart headers not found because the `-Dcudnn_include=` comma-separated list needs a different form; nvcc rejecting the host compiler and wanting `-Dnvcc_ccbin=`.
-
-Then confirm the backend is actually in the binary — same trap as OpenCL, since Lc0 skips CUDA silently when the probes fail:
-
-```console
-$ printf 'uci\nquit\n' | ./result/bin/lc0 2>/dev/null | grep 'option name Backend type'
-```
-
-**Pass:** `cuda` appears in the `var` list.
-
-## 5. `lc0-cuda` runs on the GPU
-
-On Arch (not NixOS), a Nix-built CUDA binary still needs the host driver's `libcuda.so.1`, which is not in the Nix closure. If it fails with `libcuda.so.1: cannot open shared object file`, the usual fixes are `nixglhost`/`nixGL`, or pointing the loader at the host driver directory for a one-off check.
+The Linux box available has an AMD GPU. Nothing here has executed a CUDA
+kernel, and the BT4 recommendation in `docs/lc0-networks.md` remains an
+extrapolation from the 159 nps Apple-GPU figure. **This is the one item on the
+original checklist still open**, and it needs an NVIDIA box:
 
 ```console
 $ curl -LO https://storage.lczero.org/files/networks-contrib/BT4-1024x15x32h-swa-6147500-policytune-332.pb.gz
-$ nix hash file --sri --type sha256 BT4-1024x15x32h-swa-6147500-policytune-332.pb.gz
   # expect: sha256-5q2p1sSnab+rOqCEjYLK64CapF+D5sYF/FijHSG91hg=
-
 $ { printf 'uci\nisready\nposition startpos\ngo nodes 20000\n'; sleep 60; printf 'quit\n'; } \
-    | ./result/bin/lc0 --weights=./BT4-*.pb.gz --backend=cuda
+    | ./result-cuda/bin/lc0 --weights=./BT4-*.pb.gz --backend=cuda
 ```
 
-**Pass:** a `bestmove`, and an `nps` figure far above the 159 nps this net managed on an integrated Apple GPU. BT4 is listed as the strongest option in `docs/lc0-networks.md` on the assumption a discrete card makes it pay off; this is the measurement that supports or refutes that.
+On Arch rather than NixOS this will also need the host driver's `libcuda.so.1`,
+which is not in the Nix closure — `nixglhost`/`nixGL`, or the same
+ICD-substitution trick used for ROCm above.
 
-## 6. Sanity: the moves are still right
+### 6. Sanity: the moves are still right — **pass, with the criterion corrected**
 
-Whichever backends come up, one tactical position confirms the net and search are wired correctly and not just producing legal noise:
+The checklist asked for `bestmove g3g6` (WAC.001). `lc0-opencl` does not play
+it — and the reason is the network, not the backend. Two controls isolate the
+variable:
 
-```console
-$ { printf 'uci\nisready\nposition fen 2rr3k/pp3pp1/1nnqbN1p/3pN3/2pP4/2P3Q1/PPB4P/R4RK1 w - - 0 1\ngo nodes 20000\n'; \
-    sleep 60; printf 'quit\n'; } | ./result/bin/lc0 --weights=<net> --backend=<backend>
-```
+| Backend | Net | Nodes | Result |
+|---|---|---:|---|
+| `opencl` | `744706` (SE) | 20k | `f6h5`, cp 709 |
+| `eigen` | `744706` (SE) | 20k | `f6h5`, cp 717 |
+| `opencl` | `sv-t60-3010` (SE) | 20k | `f6h5` |
+| `eigen` | `t1-256` (attention) | 222 | **`g3g6`, mate 2** |
 
-**Pass:** `bestmove g3g6`. That is WAC.001; `lc0-metal` finds it in about a thousand nodes and reports mate in 2.
+Hold the net fixed and swap the backend: OpenCL and the CPU reference agree
+move-for-move, within 8 cp. Two independent implementations computing the same
+answer is what a correct backend looks like. Hold the backend fixed and swap
+the net: the attention net finds the mate in 222 nodes, reproducing on CPU
+exactly what `lc0-metal` was reported to do.
 
-## What to capture
+So `g3g6` is a property of attention networks — and attention networks are
+precisely what the OpenCL backend cannot load (check 3). **No
+OpenCL-compatible net can meet that bar**, and the original criterion was
+unreachable by construction. The right sanity check for `lc0-opencl` is
+agreement with the CPU backend on the same net, which is the row-pair above.
+The `f6h5` lines are all winning by about +7; they simply are not the mate.
 
-For each check: the command, whether it passed, and the `nps` figure where there is one. The two numbers most worth having are OpenCL-vs-BLAS on the same box and CUDA-vs-BT4-on-Apple-GPU — both feed straight back into the recommendations in `docs/lc0-networks.md`, which currently carries an explicit note that neither backend was ever loaded.
+## Still open
 
-If anything here fails, the fix belongs in `engines/lc0.nix`; the CUDA variant in particular has never had a single line of it executed.
-
----
-
-## Unrelated open items
-
-Not Linux-specific and not part of the above, but open in this repository:
-
-- **The nightly `update` workflow cannot open its PR.** `Settings → Actions → General → Workflow permissions` needs *Allow GitHub Actions to create and approve pull requests*; the API currently reports `can_approve_pull_request_reviews: false`. Four otherwise-green runs died at that final step.
-- **`blackmarlin` cannot be fetched.** Upstream's Git-LFS budget is exhausted (`jnlt3/blackmarlin` returns HTTP 403 `This repository exceeded its LFS budget` for the 29 MB `nn/default.bin`), so any cache miss on its source fails the build. Nothing in this repo can fix it; the options are mirroring the net, pushing the source FOD to the R2 cache, or dropping the engine until upstream restores the budget.
-- **`ci/update-nets.sh` does not exist**, so the NNUE net-refresh step in `ci/update.sh` is silently skipped by its `[ -x ]` guard.
+- **`lc0-cuda` has never executed a kernel** (check 5). Needs an NVIDIA host.
+- The nightly `update` workflow cannot open its PR. `Settings → Actions →
+  General → Workflow permissions` needs *Allow GitHub Actions to create and
+  approve pull requests*; the API reports `can_approve_pull_request_reviews:
+  false`. Four otherwise-green runs died at that final step.
+- **`blackmarlin` cannot be fetched.** Upstream's Git-LFS budget is exhausted
+  (`jnlt3/blackmarlin` returns HTTP 403 for the 29 MB `nn/default.bin`), so any
+  cache miss on its source fails the build. Options: mirror the net, push the
+  source FOD to the R2 cache, or drop the engine until upstream restores it.
+- **`ci/update-nets.sh` does not exist** — confirmed still true, so the NNUE
+  net-refresh step in `ci/update.sh:120` is silently skipped by its `[ -x ]`
+  guard. Same silent-skip shape as the two backend bugs above.
