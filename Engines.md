@@ -28,7 +28,6 @@ platforms they build on, their main evaluation method, and a link to source.
 | lc0-metal | 3500 | NN + MCTS | C++ | macOS | GPL-3.0-only | [link](https://lczero.org) |
 | velvet | 3500 | NNUE | Rust | Linux, macOS, Windows | GPL-3.0-or-later | [link](https://github.com/mhonert/velvet-chess) |
 | arasan | 3450 | NNUE | C++ | Linux, macOS, Windows | MIT | [link](https://www.arasanchess.org/) |
-| blackmarlin | 3450 | NNUE | Rust | Linux, macOS, Windows | GPL-3.0-only | [link](https://github.com/dsekercioglu/blackmarlin) |
 | reckless | 3420 | NNUE | Rust | Linux, macOS, Windows | AGPL-3.0-only | [link](https://github.com/codedeliveryservice/Reckless) |
 | avalanche | 3400 | NNUE | Zig | Linux, macOS | MIT | [link](https://github.com/SnowballSH/Avalanche) |
 | akimbo | 3300 | NNUE | Rust | Linux, macOS, Windows | MIT | [link](https://github.com/jw1912/akimbo) |

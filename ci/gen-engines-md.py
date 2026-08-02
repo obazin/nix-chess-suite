@@ -7,7 +7,7 @@ that currently cross-compile — refresh from the latest CI Windows job."""
 import json, subprocess, sys
 
 # Engines that currently cross-compile to Windows (from the CI windows job).
-WINDOWS = set("""akimbo arasan berserk bit-genie blackmarlin caissa carp cheng4
+WINDOWS = set("""akimbo arasan berserk bit-genie caissa carp cheng4
 cinnamon clover ct800 deepov demolito discocheck fabchess fruit gambitfruit
 glaurung laser loki minic napoleon obsidian pulse reckless rodent-iv rustic
 senpai shallow-blue stash stockfish svart texel togaii tucano vajolet2 velvet
@@ -26,7 +26,7 @@ DATA = {
  "alexandria":(3602,"NNUE","C++"),"clover":(3597,"NNUE","C++"),
  "seer":(3585,"NNUE","C++"),"igel":(3577,"NNUE","C++"),
  "stormphrax":(3535,"NNUE","C++"),"heimdall":(3500,"NNUE","Nim"),
- "velvet":(3500,"NNUE","Rust"),"blackmarlin":(3450,"NNUE","Rust"),
+ "velvet":(3500,"NNUE","Rust"),
  "arasan":(3450,"NNUE","C++"),"reckless":(3420,"NNUE","Rust"),
  "avalanche":(3400,"NNUE","Zig"),"marvin":(3300,"NNUE","C++"),
  "carp":(3300,"NNUE","Rust"),"akimbo":(3300,"NNUE","Rust"),

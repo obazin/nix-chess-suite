@@ -73,7 +73,6 @@ maia // lc0 // {
   # Rust
   carp = callEngine ./carp.nix;
   akimbo = callEngine ./akimbo.nix;
-  blackmarlin = callEngine ./blackmarlin.nix;
   svart = callEngine ./svart.nix;
   # distinct strong C++ (Winter uses a logistic-regression eval, not NNUE/HCE)
   marvin = callEngine ./marvin.nix;

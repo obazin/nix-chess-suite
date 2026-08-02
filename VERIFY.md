@@ -231,14 +231,22 @@ The `f6h5` lines are all winning by about +7; they simply are not the mate.
 ## Still open
 
 - **`lc0-cuda` has never executed a kernel** (check 5). Needs an NVIDIA host.
-- The nightly `update` workflow cannot open its PR. `Settings → Actions →
-  General → Workflow permissions` needs *Allow GitHub Actions to create and
-  approve pull requests*; the API reports `can_approve_pull_request_reviews:
-  false`. Four otherwise-green runs died at that final step.
-- **`blackmarlin` cannot be fetched.** Upstream's Git-LFS budget is exhausted
-  (`jnlt3/blackmarlin` returns HTTP 403 for the 29 MB `nn/default.bin`), so any
-  cache miss on its source fails the build. Options: mirror the net, push the
-  source FOD to the R2 cache, or drop the engine until upstream restores it.
 - **`ci/update-nets.sh` does not exist** — confirmed still true, so the NNUE
   net-refresh step in `ci/update.sh:120` is silently skipped by its `[ -x ]`
   guard. Same silent-skip shape as the two backend bugs above.
+
+### Closed
+
+- ~~The nightly `update` workflow cannot open its PR.~~ Fixed at the repository
+  level: `can_approve_pull_request_reviews` is now `true`.
+  `default_workflow_permissions` is deliberately left at `read` — `update.yml`
+  declares its own `permissions:` block, which is what let those runs push a
+  branch and get as far as the PR step in the first place, so the restrictive
+  default costs nothing.
+- ~~`blackmarlin` cannot be fetched.~~ Still true upstream, and no fix was
+  available: forks share the parent's LFS budget and return the same 403, and
+  the net is not a release asset, so there was nothing to mirror and no source
+  to push to the R2 cache. The engine has been removed from the collection
+  rather than carried as a package that nobody can build. Reason and the last
+  known-good pin are recorded in `docs/excluded.md`, so restoring it is a
+  matter of re-adding the file if upstream restores its budget.
