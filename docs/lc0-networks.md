@@ -8,6 +8,8 @@ Pass one at runtime:
 $ lc0 --weights=/path/to/network.pb.gz
 ```
 
+Each variant installs under its own name — `lc0`, `lc0-opencl`, `lc0-metal`, `lc0-cuda` — so that all of them survive side by side in the `chess-engines-all` bundle. Substitute the one you built for `lc0` in the examples below.
+
 All files below live under `https://storage.lczero.org/files/networks-contrib/`. Sizes are the actual `Content-Length` of each file; architectures are what `lc0 describenet --weights=<file>` reports, checked against every net listed here rather than inferred from the filename.
 
 ## The compatibility trap: OpenCL cannot run modern nets

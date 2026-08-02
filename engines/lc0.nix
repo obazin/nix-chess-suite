@@ -79,8 +79,11 @@ let
     , mesonFlags ? [ ]
     , expectBackend ? null
     }:
+    let
+      name = if variant == null then "lc0" else "lc0-${variant}";
+    in
     stdenv.mkDerivation {
-      pname = if variant == null then "lc0" else "lc0-${variant}";
+      pname = name;
       inherit version src;
 
       # lc0's meson.build pulls abseil in as a meson subproject, which would
@@ -122,6 +125,19 @@ let
 
       doCheck = true;
 
+      # meson installs every variant as `bin/lc0`, which makes them collide in
+      # the `chess-engines-all` bundle: buildEnv is built with
+      # ignoreCollisions = true, so one arbitrary variant wins the `bin/lc0`
+      # symlink and the others vanish from the bundle without a word — CI
+      # builds and caches lc0-metal, and `nix profile install .#default` then
+      # hands you the CPU build. Give each accelerated variant its own name so
+      # all of them survive the merge. The CPU build keeps the bare `lc0`,
+      # which is what a consumer expects to type and matches the naming the
+      # previous lc0 packaging used.
+      postInstall = lib.optionalString (variant != null) ''
+        mv "$out/bin/lc0" "$out/bin/${name}"
+      '';
+
       # Same guarantee as mkEngine: the binary must speak UCI. It stops at the
       # handshake, because with no net pinned there is nothing to search with —
       # lc0 answers `uci` from its built-in option table before any weights are
@@ -143,14 +159,14 @@ let
       doInstallCheck = true;
       installCheckPhase = ''
         runHook preInstallCheck
-        bin="$out/bin/lc0"
+        bin="$out/bin/${name}"
         out_txt=$(printf 'uci\nquit\n' | "$bin" 2>/dev/null | tr -d '\r')
         echo "$out_txt" | grep -q uciok || {
-          echo "FAIL: lc0 did not answer 'uciok' to a uci handshake" >&2
+          echo "FAIL: ${name} did not answer 'uciok' to a uci handshake" >&2
           echo "$out_txt" >&2
           exit 1
         }
-        echo "ok: lc0 speaks UCI"
+        echo "ok: ${name} speaks UCI"
       '' + lib.optionalString (expectBackend != null) ''
         backends=$(echo "$out_txt" | grep 'option name Backend type' || true)
         case " $backends " in
@@ -172,7 +188,7 @@ let
           + ", bring your own network";
         homepage = "https://lczero.org";
         license = licenses.gpl3Only;
-        mainProgram = "lc0";
+        mainProgram = name;
         inherit platforms;
         maintainers = [ ];
       };

@@ -62,7 +62,7 @@ which already fails loudly at configure time rather than silently skipping.
 
 ```console
 $ nix build .#lc0-opencl
-$ printf 'uci\nquit\n' | ./result/bin/lc0 2>/dev/null | grep 'option name Backend type'
+$ printf 'uci\nquit\n' | ./result/bin/lc0-opencl 2>/dev/null | grep 'option name Backend type'
 option name Backend type combo default opencl var opencl var eigen var trivial …
 ```
 
@@ -117,7 +117,7 @@ per-backend split was sound, and is now tested rather than assumed.
 
 ```console
 $ NIXPKGS_ALLOW_UNFREE=1 nix build --impure .#lc0-cuda
-$ printf 'uci\nquit\n' | ./result-cuda/bin/lc0 2>/dev/null | grep 'option name Backend type'
+$ printf 'uci\nquit\n' | ./result-cuda/bin/lc0-cuda 2>/dev/null | grep 'option name Backend type'
 option name Backend type combo default cuda-auto var cuda-auto var cuda var cuda-fp16 var eigen …
 ```
 
@@ -138,7 +138,7 @@ original checklist still open**, and it needs an NVIDIA box:
 $ curl -LO https://storage.lczero.org/files/networks-contrib/BT4-1024x15x32h-swa-6147500-policytune-332.pb.gz
   # expect: sha256-5q2p1sSnab+rOqCEjYLK64CapF+D5sYF/FijHSG91hg=
 $ { printf 'uci\nisready\nposition startpos\ngo nodes 20000\n'; sleep 60; printf 'quit\n'; } \
-    | ./result-cuda/bin/lc0 --weights=./BT4-*.pb.gz --backend=cuda
+    | ./result-cuda/bin/lc0-cuda --weights=./BT4-*.pb.gz --backend=cuda
 ```
 
 On Arch rather than NixOS this will also need the host driver's `libcuda.so.1`,
