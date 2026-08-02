@@ -1,82 +1,213 @@
-{ lib, stdenv, lc0, fetchurl, makeWrapper, ... }:
+{ lib, stdenv, fetchFromGitHub, meson, ninja, pkg-config, python3, zlib, gtest
+, eigen, abseil-cpp, ocl-icd, opencl-headers, cudaPackages, lld, ... }:
 
 # Full-strength Leela Chess Zero, distinct from the Maia family.
 #
-# nixpkgs' lc0 is built with the CPU (eigen) backend only, and marked broken
-# on Darwin — the flag is stale, lc0 0.32.1 builds and runs on aarch64-darwin.
+# Built from lc0's own sources rather than wrapping nixpkgs' lc0. The pin below
+# is a real `src`, so the nightly updater bumps this engine like every other one
+# in the strong tier — as a wrapper, lc0's version moved only when the flake's
+# nixpkgs input did, and nix-update had no `src` to work with at all.
 #
-# On CPU, the BT4 competition network used at TCEC is impractically slow, so
-# the default here is a distilled T1 network that gives strong play at usable
-# node rates on a CPU backend. The larger net is exposed too for anyone
-# rebuilding lc0 with a GPU backend, where it is far stronger.
+# NO NETWORK SHIPS WITH ANY OF THESE, deliberately. Only the executable is
+# pinned; the weights are the consumer's call:
 #
-# Networks are pinned by exact filename + hash. lczero.org rotates the "best"
-# net over time; the update script bumps these deliberately, never silently.
+#   lc0 --weights=/path/to/network.pb.gz
+#
+# The right net is a function of the client's hardware — backend, VRAM, and the
+# time control on offer. A T80/BT4-class net that dominates on a GPU is unusably
+# slow on a CPU backend, and the distilled nets trade the other way. That matrix
+# is far too large to enumerate here, and pinning one net for everyone would
+# ship a 150 MB file that is wrong for most people. Networks live at
+# https://storage.lczero.org/files/ (guide: https://lczero.org/play/networks/).
+#
+# docs/lc0-networks.md carries a shortlist per backend, in several sizes, with
+# verified hashes — including the one trap worth knowing before you pick: the
+# OpenCL backend rejects every attention-body net (it takes classical/SE nets
+# with RELU only), so lc0-opencl cannot run any current T1/T2/T3/BT network.
+#
+# The Maia family is the deliberate exception and keeps its nets pinned
+# (engines/maia.nix): those are rating-targeted and tiny, and a maia-1500
+# without the 1500 net is not an engine at all.
+#
+# One variant per backend, each a separate build. lc0 selects a backend at
+# runtime from the ones compiled into the binary, so rather than one build whose
+# contents depend on what happens to be in the closure, each variant here states
+# exactly which backend it carries and switches every other one off. BLAS (eigen
+# on Linux, Accelerate on macOS) stays in all of them as the fallback lc0 uses
+# when its accelerated backend finds no device.
+#
+#   lc0          CPU only. The portable, cached default.
+#   lc0-opencl   Vendor-neutral GPU: links the OpenCL ICD loader, not a driver,
+#                and picks up whatever NVIDIA/AMD/Intel ICD the host installs.
+#   lc0-cuda     NVIDIA. Unfree toolchain, so it is never built or cached by CI
+#                (see the exclusion in flake.nix) — build it yourself with
+#                NIXPKGS_ALLOW_UNFREE=1.
+#   lc0-metal    Apple GPU. macOS only, per Metal.
 
 let
-  lc0' = lc0; # broken flag handled at nixpkgs-import level (see flake.nix)
+  version = "0.32.1";
 
-  networks = {
-    # ~150 MB, the practical default for CPU play.
-    "t1-512" = {
-      file = "t1-512x15x8h-distilled-swa-3395000.pb.gz";
-      hash = "sha256-H9sVGeWwLgPx2SAeyOuV9kDjLMZFmk8UwOq2iQ3Al+g=";
-      default = true;
-    };
-    # ~37 MB, for weaker hardware; faster, a little weaker.
-    "t1-256" = {
-      file = "t1-256x10-distilled-swa-2432500.pb.gz";
-      hash = "sha256-vCemyuitNvK5qApq2dq7DW/aJbHn9IGnm8NZ4U9WNAY=";
-      default = false;
-    };
+  src = fetchFromGitHub {
+    owner = "LeelaChessZero";
+    repo = "lc0";
+    rev = "v${version}";
+    hash = "sha256-Dvq698ZfYumoax7i1nN5GwTQKXgby9+TdTZT6C7/jgc=";
+    fetchSubmodules = true;
   };
 
-  mkLc0 = suffix: net:
-    let
-      weights = fetchurl {
-        url = "https://storage.lczero.org/files/networks-contrib/${net.file}";
-        inherit (net) hash;
-      };
-      name = if net.default then "lc0" else "lc0-${suffix}";
-    in
-    stdenv.mkDerivation {
-      pname = name;
-      version = lc0'.version;
-      dontUnpack = true;
-      nativeBuildInputs = [ makeWrapper ];
+  # Every backend named explicitly, so a variant is what its name says and
+  # nothing more. Left to itself lc0 would decide from the closure: `metal`
+  # defaults to `auto` and self-enables on any macOS build, and `plain_cuda`
+  # defaults to true, waiting for an nvcc to appear. `onnx` and `dx` are off in
+  # every variant — no build here carries an ONNX Runtime or DirectX SDK.
+  backendFlags = { cuda ? false, opencl ? false, metal ? false }: [
+    "-Dplain_cuda=${lib.boolToString cuda}"
+    "-Dcudnn=false"
+    "-Dopencl=${lib.boolToString opencl}"
+    "-Dmetal=${if metal then "enabled" else "disabled"}"
+    "-Donnx=false"
+    "-Ddx=false"
+  ];
 
-      installPhase = ''
-        runHook preInstall
-        mkdir -p "$out/share/${name}"
-        cp ${weights} "$out/share/${name}/${net.file}"
-        makeWrapper ${lc0'}/bin/lc0 "$out/bin/${name}" \
-          --add-flags "--weights=$out/share/${name}/${net.file}"
-        runHook postInstall
+  mkLc0 =
+    { variant
+    , backend
+    , platforms
+    , nativeBuildInputs ? [ ]
+    , buildInputs ? [ ]
+    , mesonFlags ? [ ]
+    }:
+    stdenv.mkDerivation {
+      pname = if variant == null then "lc0" else "lc0-${variant}";
+      inherit version src;
+
+      # lc0's meson.build pulls abseil in as a meson subproject, which would
+      # need the network mid-build; point it at the abseil already in the
+      # closure. The third replacement drops a `cc.has_header('Eigen/Core')`
+      # probe that fails on the include layout nixpkgs' eigen ships. Both mirror
+      # nixpkgs' own lc0 expression. --replace-fail is deliberate: if an upgrade
+      # moves these lines, the bump fails loudly instead of quietly producing a
+      # lesser build.
+      postPatch = ''
+        substituteInPlace meson.build \
+          --replace-fail "absl = subproject('abseil-cpp', default_options : ['warning_level=0', 'cpp_std=c++20'])" "" \
+          --replace-fail "deps += absl.get_variable('absl_container_dep').as_system()" "deps += [dependency('absl_flat_hash_map'), dependency('absl_cleanup'), dependency('absl_base')]" \
+          --replace-fail "if eigen_dep.found() and cc.has_header('Eigen/Core')" "if eigen_dep.found()"
+        patchShebangs --build scripts/*
       '';
 
+      strictDeps = true;
+
+      nativeBuildInputs = [ meson ninja pkg-config python3 ] ++ nativeBuildInputs;
+      buildInputs = [ eigen gtest zlib abseil-cpp ] ++ buildInputs;
+
+      mesonFlags = [
+        # No embedded net — see the header.
+        "-Dembed=false"
+
+        # lc0 defaults native_arch on, which puts -march=native into a binary
+        # that CI builds once and the shared cache then serves to everyone: an
+        # engine tuned to the runner's CPU that SIGILLs on an older one. The
+        # rest of the collection strips these flags for the same reason (see
+        # stripArchFlags in lib/mkEngine.nix) — the portable baseline is the
+        # cacheable artifact, and -march=native belongs to an opt-in native
+        # build.
+        "-Dnative_arch=false"
+        "-Dispc_native_only=false"
+      ] ++ backendFlags backend ++ mesonFlags;
+
+      enableParallelBuilding = true;
+
+      doCheck = true;
+
+      # Same guarantee as mkEngine: the binary must speak UCI. It stops at the
+      # handshake, because with no net pinned there is nothing to search with —
+      # lc0 answers `uci` from its built-in option table before any weights are
+      # touched, and before it opens a GPU device, so this is also the right
+      # depth of check for the accelerated variants on a driverless builder.
+      # The net-loading path is covered by the Maia engines, which pin theirs
+      # and do run a real search in their install check.
       doInstallCheck = true;
-      # Hold stdin open past the `go`: lc0 loads a ~150 MB net and initialises
-      # the eigen backend before searching, and exits on EOF. An instant pipe
-      # close makes it quit before it can answer bestmove — a false failure.
       installCheckPhase = ''
-        out_txt=$({ printf 'uci\nisready\nposition startpos\ngo nodes 40\n'; sleep 75; printf 'quit\n'; } \
-          | "$out/bin/${name}" 2>/dev/null | tr -d '\r')
-        echo "$out_txt" | grep -q uciok || { echo "FAIL: ${name} no uciok" >&2; exit 1; }
-        echo "$out_txt" | grep -q bestmove || { echo "FAIL: ${name} no bestmove — net likely not loaded" >&2; exit 1; }
-        echo "ok: ${name} searches"
+        runHook preInstallCheck
+        bin="$out/bin/lc0"
+        out_txt=$(printf 'uci\nquit\n' | "$bin" 2>/dev/null | tr -d '\r')
+        echo "$out_txt" | grep -q uciok || {
+          echo "FAIL: lc0 did not answer 'uciok' to a uci handshake" >&2
+          echo "$out_txt" >&2
+          exit 1
+        }
+        echo "ok: lc0 speaks UCI"
+        runHook postInstallCheck
       '';
 
       meta = with lib; {
-        description = "Leela Chess Zero with the ${suffix} network"
-          + lib.optionalString net.default " (CPU-practical default)";
+        description = "Leela Chess Zero, a neural-network MCTS engine"
+          + (if variant == null then " (CPU)" else " (${variant} backend)")
+          + ", bring your own network";
         homepage = "https://lczero.org";
         license = licenses.gpl3Only;
-        mainProgram = name;
-        platforms = platforms.unix;
+        mainProgram = "lc0";
+        inherit platforms;
+        maintainers = [ ];
       };
     };
 in
-lib.mapAttrs' (suffix: net: lib.nameValuePair
-  (if net.default then "lc0" else "lc0-${suffix}")
-  (mkLc0 suffix net))
-  networks
+{
+  lc0 = mkLc0 {
+    variant = null;
+    backend = { };
+    platforms = lib.platforms.unix;
+  };
+}
+# OpenCL ships an ICD loader, and CUDA a toolchain, that only exist on Linux
+# here; on macOS the GPU story is Metal, below.
+// lib.optionalAttrs stdenv.hostPlatform.isLinux {
+  lc0-opencl = mkLc0 {
+    variant = "opencl";
+    backend = { opencl = true; };
+    platforms = lib.platforms.linux;
+    buildInputs = [ ocl-icd opencl-headers ];
+    # lc0 looks for CL/opencl.h under -Dopencl_include, which defaults to
+    # /usr/include and finds nothing here.
+    mesonFlags = [ "-Dopencl_include=${opencl-headers}/include" ];
+  };
+
+  lc0-cuda = mkLc0 {
+    variant = "cuda";
+    backend = { cuda = true; };
+    platforms = lib.platforms.linux;
+    nativeBuildInputs = [ cudaPackages.cuda_nvcc ];
+    buildInputs = [ cudaPackages.cuda_cudart cudaPackages.libcublas ];
+    # meson probes for cublas/cudart with cc.find_library and for the headers
+    # under -Dcudnn_include (the option covers plain CUDA too), whose defaults
+    # are /opt/cuda and friends.
+    mesonFlags = [
+      "-Dcudnn_include=${lib.getDev cudaPackages.cuda_cudart}/include,${lib.getDev cudaPackages.libcublas}/include"
+    ];
+  };
+}
+// lib.optionalAttrs stdenv.hostPlatform.isDarwin {
+  lc0-metal = mkLc0 {
+    variant = "metal";
+    backend = { metal = true; };
+    platforms = lib.platforms.darwin;
+    # Link with LLVM lld. The default cctools ld (ld64 1010.6) dies with
+    # SIGTRAP on this link, and bisecting it shows the trigger is the
+    # Objective-C++ Metal objects themselves (NetworkGraph.mm,
+    # MetalNetworkBuilder.mm) — not the Metal frameworks, which each link fine
+    # on their own, and not LTO. lld links the same objects without complaint.
+    # Only this variant is affected; the others keep the stdenv linker.
+    #
+    # The arg has to go on objc/objcpp, not just cpp: the lc0 target mixes C++
+    # with Objective-C++, and meson picks the linker — and therefore the
+    # <lang>_link_args — from the ObjC++ side, so a lone -Dcpp_link_args is
+    # accepted at configure time and then never reaches the link.
+    nativeBuildInputs = [ lld ];
+    mesonFlags = [
+      "-Dcpp_link_args=-fuse-ld=lld"
+      "-Dobjc_link_args=-fuse-ld=lld"
+      "-Dobjcpp_link_args=-fuse-ld=lld"
+    ];
+  };
+}

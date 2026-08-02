@@ -25,6 +25,7 @@ platforms they build on, their main evaluation method, and a link to source.
 | stormphrax | 3535 | NNUE | C++ | Linux, macOS | GPL-3.0-or-later | [link](https://github.com/Ciekce/Stormphrax) |
 | heimdall | 3500 | NNUE | Nim | Linux, macOS | Apache-2.0 | [link](https://github.com/nocturn9x/heimdall) |
 | lc0 | 3500 | NN + MCTS | C++ | Linux, macOS | GPL-3.0-only | [link](https://lczero.org) |
+| lc0-metal | 3500 | NN + MCTS | C++ | macOS | GPL-3.0-only | [link](https://lczero.org) |
 | velvet | 3500 | NNUE | Rust | Linux, macOS, Windows | GPL-3.0-or-later | [link](https://github.com/mhonert/velvet-chess) |
 | arasan | 3450 | NNUE | C++ | Linux, macOS, Windows | MIT | [link](https://www.arasanchess.org/) |
 | blackmarlin | 3450 | NNUE | Rust | Linux, macOS, Windows | GPL-3.0-only | [link](https://github.com/dsekercioglu/blackmarlin) |
@@ -32,7 +33,6 @@ platforms they build on, their main evaluation method, and a link to source.
 | avalanche | 3400 | NNUE | Zig | Linux, macOS | MIT | [link](https://github.com/SnowballSH/Avalanche) |
 | akimbo | 3300 | NNUE | Rust | Linux, macOS, Windows | MIT | [link](https://github.com/jw1912/akimbo) |
 | carp | 3300 | NNUE | Rust | Linux, macOS, Windows | GPL-3.0-only | [link](https://github.com/dede1751/carp) |
-| lc0-t1-256 | 3300 | NN + MCTS | C++ | Linux, macOS | GPL-3.0-only | [link](https://lczero.org) |
 | marvin | 3300 | NNUE | C++ | Linux, macOS | GPL-3.0-or-later | [link](https://github.com/bmdanielsson/marvin-chess) |
 | xiphos | 3300 | HCE | C | Linux, macOS, Windows | GPL-3.0-or-later | [link](https://github.com/milostatarevic/xiphos) |
 | laser | 3280 | HCE | C++ | Linux, macOS, Windows | GPL-3.0-or-later | [link](https://github.com/jeffreyan11/uci-chess-engine) |

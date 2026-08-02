@@ -189,7 +189,7 @@ Actively developed, NNUE-based, TCEC Premier Division regulars. CI tracks these 
 | Engine | Elo (CCRL 40/15) | License | Net handling |
 |---|---|---|---|
 | Stockfish | ~3650 | GPL-3.0 | pinned `fetchurl`, embedded |
-| Lc0 | TCEC #2 | GPL-3.0 | weights are a separate runtime derivation |
+| Lc0 | TCEC #2 | GPL-3.0 | **none shipped** — bring your own (`--weights=`) |
 | Obsidian | 3618 | GPL-3.0 | pinned `fetchurl` |
 | Berserk | 3616 | GPL-3.0 | pinned `fetchurl` |
 | PlentyChess | 3611 | GPL-3.0 | pinned + build-native preprocessor |
@@ -203,6 +203,10 @@ Actively developed, NNUE-based, TCEC Premier Division regulars. CI tracks these 
 | Reckless | 3417+ | AGPL-3.0 | pinned; S29 Superfinalist, rating is stale |
 
 Eleven of these download an NNUE net at build time, which the Nix sandbox forbids. Each net is pinned as its own `fetchurl` with an SRI hash and passed through `EVALFILE=`, following the pattern nixpkgs already uses for `stockfish`.
+
+Lc0 is the exception, and ships no network at all. The right net depends on the client's backend, VRAM and time control — a GPU-class net is unusably slow on CPU and the distilled ones trade the other way — so that choice belongs to the consumer, who passes it at runtime: `lc0 --weights=/path/to/network.pb.gz`. There is one build per backend, each carrying that backend and no other: `lc0` (CPU, the cached default), `lc0-opencl` (vendor-neutral GPU, Linux), `lc0-metal` (Apple GPU, macOS), and `lc0-cuda` (NVIDIA — unfree, so CI never builds or caches it; build it yourself with `NIXPKGS_ALLOW_UNFREE=1`).
+
+**[docs/lc0-networks.md](docs/lc0-networks.md) is the shortlist of known-good networks per backend**, in several sizes each, with verified hashes. Read it before picking one: Lc0's OpenCL backend cannot load any modern (attention-body) network at all, so `lc0-opencl` is restricted to pre-2022 SE-ResNet nets, and handing it a T1/BT net is a hard failure at startup rather than a slowdown.
 
 ### `classic` — the 1800-2400 sparring band
 

@@ -16,7 +16,10 @@ vice viridithas wahoo weiss willow winter wukong wyldchess xiphos""".split())
 # (approx Elo, eval/algorithm, language). Elo is ballpark (CCRL/TCEC/class).
 DATA = {
  "stockfish":(3650,"NNUE","C++"),"lc0":(3500,"NN + MCTS","C++"),
- "lc0-t1-256":(3300,"NN + MCTS","C++"),"minic":(3690,"NNUE","C++"),
+ # lc0 ships one build per backend and no network; the Elo is what a strong
+ # net gets you, not a property of the binary. See engines/lc0.nix.
+ "lc0-metal":(3500,"NN + MCTS","C++"),"lc0-opencl":(3500,"NN + MCTS","C++"),
+ "lc0-cuda":(3500,"NN + MCTS","C++"),"minic":(3690,"NNUE","C++"),
  "berserk":(3616,"NNUE","C"),"obsidian":(3618,"NNUE","C++"),
  "plentychess":(3611,"NNUE","C++"),"caissa":(3610,"NNUE","C++"),
  "rubichess":(3602,"NNUE","C"),"viridithas":(3602,"NNUE","Rust"),

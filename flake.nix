@@ -33,6 +33,20 @@
         problems.handlers.lc0.broken = "ignore";
       };
 
+      # Engines kept out of the aggregate bundle and out of `checks` — which is
+      # also the list CI iterates, so these are never built on a runner and
+      # never pushed to the public cache. They stay available as ordinary
+      # packages (`nix build .#lc0-cuda`) for anyone who wants to build one
+      # locally.
+      #
+      # lc0-cuda: CUDA is unfree. It cannot be redistributed through the R2
+      # cache, and its closure would dwarf the rest of the collection. It is
+      # excluded here by NAME rather than by meta.platforms on purpose —
+      # nixpkgs throws on any evaluation of an unfree derivation, `meta`
+      # included, so a platform-based filter would have to touch `.meta` and
+      # would take `nix flake check` down with it on Linux.
+      neverCached = [ "lc0-cuda" ];
+
       forAllSystems = f:
         nixpkgs.lib.genAttrs systems (system:
           f (import nixpkgs { inherit system; config = nixpkgsConfig; }));
@@ -52,8 +66,9 @@
           # engines (obsidian, gull, igel) drop out here on aarch64 so they
           # neither break `nix flake check` nor the aggregate.
           buildable = lib.filterAttrs
-            (_: drv: builtins.elem pkgs.stdenv.hostPlatform.system
-              (drv.meta.platforms or [ ]))
+            (name: drv: !(builtins.elem name neverCached)
+              && builtins.elem pkgs.stdenv.hostPlatform.system
+                (drv.meta.platforms or [ ]))
             engines;
 
           # Windows binaries are produced by cross-compiling the very same
@@ -91,8 +106,10 @@
           # (`#stockfish-native`) or with the `native` bundle. These are
           # CPU-specific, so they are ALWAYS built locally and never pushed to /
           # pulled from the shared cache (see lib/mkNative.nix). Not in `checks`,
-          # so CI never builds or caches them. lc0 is excluded (it is a wrapper
-          # around the nixpkgs meson build). Value is `isRust`.
+          # so CI never builds or caches them. lc0 is excluded: mkNative drives
+          # a Makefile/cargo build, and lc0 is meson — its native build is
+          # `-Dnative_arch=true`, which engines/lc0.nix turns off for the
+          # cached baseline. Value is `isRust`.
           mkNative = import ./lib/mkNative.nix;
           strongTier = {
             stockfish = false; berserk = false; obsidian = false;
@@ -265,8 +282,9 @@
           };
         in
         nixpkgs.lib.filterAttrs
-          (_: drv: builtins.elem pkgs.stdenv.hostPlatform.system
-            (drv.meta.platforms or [ ]))
+          (name: drv: !(builtins.elem name neverCached)
+            && builtins.elem pkgs.stdenv.hostPlatform.system
+              (drv.meta.platforms or [ ]))
           engines);
 
       # `nix run .#update -- --tier strong`, called by the update workflow.
