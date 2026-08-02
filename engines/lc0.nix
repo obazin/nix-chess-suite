@@ -1,5 +1,6 @@
 { lib, stdenv, fetchFromGitHub, meson, ninja, pkg-config, python3, zlib, gtest
-, eigen, abseil-cpp, ocl-icd, opencl-headers, cudaPackages, lld, ... }:
+, eigen, abseil-cpp, ocl-icd, opencl-headers, opencl-clhpp, cudaPackages, lld
+, ... }:
 
 # Full-strength Leela Chess Zero, distinct from the Maia family.
 #
@@ -76,6 +77,7 @@ let
     , nativeBuildInputs ? [ ]
     , buildInputs ? [ ]
     , mesonFlags ? [ ]
+    , expectBackend ? null
     }:
     stdenv.mkDerivation {
       pname = if variant == null then "lc0" else "lc0-${variant}";
@@ -127,6 +129,17 @@ let
       # depth of check for the accelerated variants on a driverless builder.
       # The net-loading path is covered by the Maia engines, which pin theirs
       # and do run a real search in their install check.
+      #
+      # expectBackend then asserts the variant is what its name claims. This is
+      # not belt-and-braces: `-Dopencl` and `-Dplain_cuda` are plain booleans
+      # that meson ANDs with its own library/header probes, so a probe that
+      # comes up empty downgrades the build to BLAS-only *and still succeeds*.
+      # A green CI run on a binary with no GPU backend in it is exactly the
+      # failure this repo shipped before — both variants were configured with
+      # libdirs that pointed nowhere, and nothing anywhere said so. The backend
+      # list comes from a compile-time registry, so this works on a builder
+      # with no GPU and no driver. Only opencl/cuda need it; -Dmetal is a meson
+      # feature set to `enabled`, which already fails loudly at configure time.
       doInstallCheck = true;
       installCheckPhase = ''
         runHook preInstallCheck
@@ -138,6 +151,18 @@ let
           exit 1
         }
         echo "ok: lc0 speaks UCI"
+      '' + lib.optionalString (expectBackend != null) ''
+        backends=$(echo "$out_txt" | grep 'option name Backend type' || true)
+        case " $backends " in
+          *" var ${expectBackend} "*)
+            echo "ok: '${expectBackend}' backend is compiled in" ;;
+          *)
+            echo "FAIL: this is lc0-${toString variant}, but '${expectBackend}' is not among its backends." >&2
+            echo "meson's probe for it failed and the backend was silently dropped." >&2
+            echo "got: $backends" >&2
+            exit 1 ;;
+        esac
+      '' + ''
         runHook postInstallCheck
       '';
 
@@ -167,23 +192,65 @@ in
     variant = "opencl";
     backend = { opencl = true; };
     platforms = lib.platforms.linux;
-    buildInputs = [ ocl-icd opencl-headers ];
-    # lc0 looks for CL/opencl.h under -Dopencl_include, which defaults to
-    # /usr/include and finds nothing here.
-    mesonFlags = [ "-Dopencl_include=${opencl-headers}/include" ];
+    expectBackend = "opencl";
+    # opencl-clhpp supplies the C++ bindings as CL/opencl.hpp. It is not
+    # optional: lc0's src/neural/backends/opencl/OpenCL.h takes CL/opencl.hpp
+    # when __has_include finds one and otherwise falls back to its vendored
+    # third_party/opencl.hpp, and that vendored copy predates the split of the
+    # D3D external-memory enums into the Windows-only part of cl_ext.h. Against
+    # the current opencl-headers it fails to compile on
+    # CL_EXTERNAL_MEMORY_HANDLE_D3D11_TEXTURE_KHR and friends. Providing the
+    # real header keeps the fallback out of the build entirely.
+    buildInputs = [ ocl-icd opencl-headers opencl-clhpp ];
+    # Both paths have to be spelled out, and the libdir one is the trap: lc0
+    # gates the backend on `has_opencl`, which needs BOTH probes to pass, and
+    # then compiles a BLAS-only binary in silence when either fails.
+    #
+    #   opencl_include  defaults to /usr/include, where there is no CL/opencl.h.
+    #   opencl_libdirs  defaults to ['/opt/cuda/lib64/', '/usr/local/cuda/lib64/']
+    #                   and reaches meson as `cc.find_library('OpenCL', dirs:)`.
+    #                   A non-empty `dirs` makes find_library search those
+    #                   directories *instead of* the compiler's own search path,
+    #                   so ocl-icd being in buildInputs is not enough — without
+    #                   this the probe fails and -Dopencl=true is a no-op.
+    mesonFlags = [
+      "-Dopencl_include=${opencl-headers}/include"
+      "-Dopencl_libdirs=${lib.getLib ocl-icd}/lib"
+    ];
   };
 
   lc0-cuda = mkLc0 {
     variant = "cuda";
     backend = { cuda = true; };
     platforms = lib.platforms.linux;
+    expectBackend = "cuda";
     nativeBuildInputs = [ cudaPackages.cuda_nvcc ];
     buildInputs = [ cudaPackages.cuda_cudart cudaPackages.libcublas ];
-    # meson probes for cublas/cudart with cc.find_library and for the headers
-    # under -Dcudnn_include (the option covers plain CUDA too), whose defaults
-    # are /opt/cuda and friends.
+    # Same silent-skip shape as OpenCL: the CUDA backend is gated on
+    # cublas/cudart/nvcc all being found, and lc0 drops it without a word
+    # otherwise. cudnn_libdirs is the one that bites — it is passed straight to
+    # `cc.find_library(dirs:)`, and a non-empty dirs list replaces the default
+    # library search path rather than extending it, so the /opt/cuda defaults
+    # shadow the store paths that buildInputs put in scope. cudnn_include
+    # (the option covers plain CUDA too) defaults to /opt/cuda as well.
     mesonFlags = [
-      "-Dcudnn_include=${lib.getDev cudaPackages.cuda_cudart}/include,${lib.getDev cudaPackages.libcublas}/include"
+      # cuda_nvcc is in this list for a header, not for the compiler: cudart's
+      # driver_types.h includes crt/host_defines.h, and that crt/ tree ships
+      # with nvcc rather than cudart. Without it the *C++* half of the backend
+      # (layers.cc, compiled by g++, not nvcc) fails to find it.
+      "-Dcudnn_include=${lib.getDev cudaPackages.cuda_cudart}/include,${lib.getDev cudaPackages.libcublas}/include,${lib.getDev cudaPackages.cuda_nvcc}/include"
+      "-Dcudnn_libdirs=${lib.getLib cudaPackages.cuda_cudart}/lib,${lib.getLib cudaPackages.libcublas}/lib"
+
+      # The CUDA counterpart of -Dnative_arch=false above, and it matters more:
+      # native_cuda defaults to true, which passes nvcc -arch=native so the GPU
+      # code is emitted only for the card in the build machine. On a builder
+      # with no NVIDIA card at all — CI, or any of the machines that would
+      # actually cut a release — nvcc cannot detect one, warns, and silently
+      # falls back to its default arch, producing a binary that is wrong
+      # everywhere on purpose. false selects -arch=all-major, which is the
+      # portable, cacheable artifact; an owner who wants their own card's arch
+      # can pass -Dcc_cuda= in a local build.
+      "-Dnative_cuda=false"
     ];
   };
 }
