@@ -145,6 +145,63 @@ On Arch rather than NixOS this will also need the host driver's `libcuda.so.1`,
 which is not in the Nix closure — `nixglhost`/`nixGL`, or the same
 ICD-substitution trick used for ROCm above.
 
+#### Doing it on EC2
+
+No NVIDIA hardware is needed for more than an hour, so a spot instance is the
+cheap way to close this.
+
+**Instance: `g4dn.2xlarge`.** The T4 is the cheapest NVIDIA GPU AWS rents, and
+any NVIDIA GPU answers the pass/fail question. Take the `2xlarge` (8 vCPU)
+rather than the `xlarge` (4 vCPU) for the *build*, not the run: `lc0-cuda` is
+compiled with `-Dnative_cuda=false`, so nvcc emits SASS for every major
+architecture (sm_50 through sm_120) and that is a long compile on four cores.
+Step up to `g5.2xlarge` (A10G, Ampere) only if the goal is a BT4 throughput
+number worth quoting — the T4 is a 2018 inference card and will understate what
+a current desktop GPU does, which matters because the BT4 recommendation in
+`docs/lc0-networks.md` is an extrapolation. Avoid `g4ad` — that is AMD, no CUDA.
+
+**AMI: "Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 24.04)".** The
+point is that the NVIDIA kernel driver is already installed and signed, which
+is the one step that most often eats an afternoon. The CUDA toolkit it also
+carries is irrelevant here — Nix builds its own — so the *Base* image is
+enough; the full Deep Learning AMI just adds frameworks you will not use. Do
+not pick a bare Ubuntu AMI unless you want to install the driver and reboot
+first. Search the AMI catalogue by that name rather than pasting an ID: IDs are
+region-specific and are re-cut on every driver bump.
+
+**Root volume: 100 GB gp3.** Not optional. The unfree CUDA closure is several
+GB before lc0 itself, and Ubuntu AMIs default to a root volume that will not
+hold it. Running out of disk halfway through a CUDA build is a slow way to
+discover this.
+
+```console
+# on the instance
+$ nvidia-smi                      # driver is present and sees the GPU
+$ curl -fsSL https://install.determinate.systems/nix | sh -s -- install
+$ git clone https://github.com/obazin/nix-chess-suite && cd nix-chess-suite
+$ git checkout lc0-backends-and-updater-fix
+
+$ NIXPKGS_ALLOW_UNFREE=1 nix build --impure .#lc0-cuda -o result-cuda --print-build-logs
+$ printf 'uci\nquit\n' | ./result-cuda/bin/lc0-cuda 2>/dev/null | grep 'option name Backend type'
+```
+
+Then the network and the search, per the commands above. `libcuda.so.1` still
+comes from the host driver rather than the Nix closure, so a run that dies with
+`libcuda.so.1: cannot open shared object file` is the expected impurity, not a
+packaging bug. `nixglhost` (`github:numtide/nix-gl-host`) exists to bridge
+exactly that — check its README for the current invocation before reaching for
+`LD_LIBRARY_PATH`, which works but mixes the host's glibc into the Nix closure
+and is how the ROCm side went wrong on Arch.
+
+NixOS is the alternative that sidesteps that entirely — `hardware.nvidia` puts
+the driver under `/run/opengl-driver/lib`, which is exactly where a
+nixpkgs-built CUDA binary looks — but on a throwaway box the driver-preinstalled
+Ubuntu image gets to an answer faster than configuring and rebuilding NixOS.
+
+Instance families, images and prices all move; confirm against the console when
+you launch. And terminate it — a forgotten GPU instance costs more than this
+whole exercise.
+
 ### 6. Sanity: the moves are still right — **pass, with the criterion corrected**
 
 The checklist asked for `bestmove g3g6` (WAC.001). `lc0-opencl` does not play
