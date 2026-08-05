@@ -41,6 +41,7 @@ The most easily mistaken category. A public GitHub repository is not a licence: 
 | Engine | Reason |
 |---|---|
 | Ethereal | GPL-3.0 source, verbatim and unmodified — it did **not** relicense. But since v13 the trained NNUE weights are withheld and sold separately (~$60). A source build falls back to `USE_NNUE=0` and plays far below its listed ~3600, which would make its presence in the collection misleading. |
+| Black Marlin | GPL-3.0, and packaged here until 2026-08. Removed because its source can no longer be fetched by anyone: the NNUE net (`nn/default.bin`, 29 MB) is a Git-LFS object, and `jnlt3/blackmarlin` has exhausted its LFS budget — the batch API returns HTTP 403 *"This repository exceeded its LFS budget"*. Forks share the parent's budget and return the same 403, and the net is not published as a release asset, so there is nothing to mirror and no source to push to the binary cache. The cached build outputs kept working, which is why this stayed invisible until the nightly updater ran `nix flake update` and forced a rebuild. Worth restoring if upstream restores the budget: the last known-good pin was rev `83826c1` (tag 9.0) with `fetchgit { fetchLFS = true; }` and `hash = "sha256-Rthea49Q4bCSYoqW2Wb5qVvX9rkgo8YavGst56RHfFI="`, `cargoHash = "sha256-6iIGF2mLfM6nTHY6LE4MeedNZTKbnkNAy6yOIc8G1yI="`. |
 
 ## Unresolved
 

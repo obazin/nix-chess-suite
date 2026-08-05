@@ -1,82 +1,356 @@
-{ lib, stdenv, lc0, fetchurl, makeWrapper, ... }:
+{ lib, stdenv, fetchFromGitHub, meson, ninja, pkg-config, python3, zlib, gtest
+, eigen, abseil-cpp, ocl-icd, opencl-headers, opencl-clhpp, cudaPackages, lld
+, runCommand, makeWrapper
+, ... }:
 
 # Full-strength Leela Chess Zero, distinct from the Maia family.
 #
-# nixpkgs' lc0 is built with the CPU (eigen) backend only, and marked broken
-# on Darwin — the flag is stale, lc0 0.32.1 builds and runs on aarch64-darwin.
+# Built from lc0's own sources rather than wrapping nixpkgs' lc0. The pin below
+# is a real `src`, so the nightly updater bumps this engine like every other one
+# in the strong tier — as a wrapper, lc0's version moved only when the flake's
+# nixpkgs input did, and nix-update had no `src` to work with at all.
 #
-# On CPU, the BT4 competition network used at TCEC is impractically slow, so
-# the default here is a distilled T1 network that gives strong play at usable
-# node rates on a CPU backend. The larger net is exposed too for anyone
-# rebuilding lc0 with a GPU backend, where it is far stronger.
+# NO NETWORK SHIPS WITH ANY OF THESE, deliberately. Only the executable is
+# pinned; the weights are the consumer's call:
 #
-# Networks are pinned by exact filename + hash. lczero.org rotates the "best"
-# net over time; the update script bumps these deliberately, never silently.
+#   lc0 --weights=/path/to/network.pb.gz
+#
+# The right net is a function of the client's hardware — backend, VRAM, and the
+# time control on offer. A T80/BT4-class net that dominates on a GPU is unusably
+# slow on a CPU backend, and the distilled nets trade the other way. That matrix
+# is far too large to enumerate here, and pinning one net for everyone would
+# ship a 150 MB file that is wrong for most people. Networks live at
+# https://storage.lczero.org/files/ (guide: https://lczero.org/play/networks/).
+#
+# docs/lc0-networks.md carries a shortlist per backend, in several sizes, with
+# verified hashes — including the one trap worth knowing before you pick: the
+# OpenCL backend rejects every attention-body net (it takes classical/SE nets
+# with RELU only), so lc0-opencl cannot run any current T1/T2/T3/BT network.
+#
+# The Maia family is the deliberate exception and keeps its nets pinned
+# (engines/maia.nix): those are rating-targeted and tiny, and a maia-1500
+# without the 1500 net is not an engine at all.
+#
+# One variant per backend, each a separate build. lc0 selects a backend at
+# runtime from the ones compiled into the binary, so rather than one build whose
+# contents depend on what happens to be in the closure, each variant here states
+# exactly which backend it carries and switches every other one off. BLAS (eigen
+# on Linux, Accelerate on macOS) stays in all of them as the fallback lc0 uses
+# when its accelerated backend finds no device.
+#
+#   lc0          CPU only. The portable, cached default.
+#   lc0-opencl   Vendor-neutral GPU: links the OpenCL ICD loader, not a driver,
+#                and picks up whatever NVIDIA/AMD/Intel ICD the host installs.
+#   lc0-cuda     NVIDIA. Unfree toolchain, so it is never built or cached by CI
+#                (see the exclusion in flake.nix) — build it yourself with
+#                NIXPKGS_ALLOW_UNFREE=1.
+#   lc0-metal    Apple GPU. macOS only, per Metal.
 
 let
-  lc0' = lc0; # broken flag handled at nixpkgs-import level (see flake.nix)
+  version = "0.32.1";
 
-  networks = {
-    # ~150 MB, the practical default for CPU play.
-    "t1-512" = {
-      file = "t1-512x15x8h-distilled-swa-3395000.pb.gz";
-      hash = "sha256-H9sVGeWwLgPx2SAeyOuV9kDjLMZFmk8UwOq2iQ3Al+g=";
-      default = true;
-    };
-    # ~37 MB, for weaker hardware; faster, a little weaker.
-    "t1-256" = {
-      file = "t1-256x10-distilled-swa-2432500.pb.gz";
-      hash = "sha256-vCemyuitNvK5qApq2dq7DW/aJbHn9IGnm8NZ4U9WNAY=";
-      default = false;
-    };
+  src = fetchFromGitHub {
+    owner = "LeelaChessZero";
+    repo = "lc0";
+    rev = "v${version}";
+    hash = "sha256-Dvq698ZfYumoax7i1nN5GwTQKXgby9+TdTZT6C7/jgc=";
+    fetchSubmodules = true;
   };
 
-  mkLc0 = suffix: net:
+  # Every backend named explicitly, so a variant is what its name says and
+  # nothing more. Left to itself lc0 would decide from the closure: `metal`
+  # defaults to `auto` and self-enables on any macOS build, and `plain_cuda`
+  # defaults to true, waiting for an nvcc to appear. `onnx` and `dx` are off in
+  # every variant — no build here carries an ONNX Runtime or DirectX SDK.
+  backendFlags = { cuda ? false, opencl ? false, metal ? false }: [
+    "-Dplain_cuda=${lib.boolToString cuda}"
+    "-Dcudnn=false"
+    "-Dopencl=${lib.boolToString opencl}"
+    "-Dmetal=${if metal then "enabled" else "disabled"}"
+    "-Donnx=false"
+    "-Ddx=false"
+  ];
+
+  mkLc0 =
+    { variant
+    , backend
+    , platforms
+    , nativeBuildInputs ? [ ]
+    , buildInputs ? [ ]
+    , mesonFlags ? [ ]
+    , expectBackend ? null
+    }:
     let
-      weights = fetchurl {
-        url = "https://storage.lczero.org/files/networks-contrib/${net.file}";
-        inherit (net) hash;
-      };
-      name = if net.default then "lc0" else "lc0-${suffix}";
-    in
-    stdenv.mkDerivation {
+      name = if variant == null then "lc0" else "lc0-${variant}";
+
+      # lc0's OpenCL backend takes classical/SE-ResNet networks with RELU and
+      # nothing else — see MakeOpenCLNetwork in
+      # src/neural/backends/opencl/network_opencl.cc. Every current T1/T2/T3/BT
+      # net is attention-body with attention policy and MISH, so pairing one
+      # with this variant is a hard failure at startup, not a slowdown. The
+      # other backends take both families.
+      acceptsAttentionNets = variant != "opencl";
+
+      self = stdenv.mkDerivation {
       pname = name;
-      version = lc0'.version;
-      dontUnpack = true;
-      nativeBuildInputs = [ makeWrapper ];
+      inherit version src;
 
-      installPhase = ''
-        runHook preInstall
-        mkdir -p "$out/share/${name}"
-        cp ${weights} "$out/share/${name}/${net.file}"
-        makeWrapper ${lc0'}/bin/lc0 "$out/bin/${name}" \
-          --add-flags "--weights=$out/share/${name}/${net.file}"
-        runHook postInstall
+      # lc0's meson.build pulls abseil in as a meson subproject, which would
+      # need the network mid-build; point it at the abseil already in the
+      # closure. The third replacement drops a `cc.has_header('Eigen/Core')`
+      # probe that fails on the include layout nixpkgs' eigen ships. Both mirror
+      # nixpkgs' own lc0 expression. --replace-fail is deliberate: if an upgrade
+      # moves these lines, the bump fails loudly instead of quietly producing a
+      # lesser build.
+      postPatch = ''
+        substituteInPlace meson.build \
+          --replace-fail "absl = subproject('abseil-cpp', default_options : ['warning_level=0', 'cpp_std=c++20'])" "" \
+          --replace-fail "deps += absl.get_variable('absl_container_dep').as_system()" "deps += [dependency('absl_flat_hash_map'), dependency('absl_cleanup'), dependency('absl_base')]" \
+          --replace-fail "if eigen_dep.found() and cc.has_header('Eigen/Core')" "if eigen_dep.found()"
+        patchShebangs --build scripts/*
       '';
 
+      strictDeps = true;
+
+      nativeBuildInputs = [ meson ninja pkg-config python3 ] ++ nativeBuildInputs;
+      buildInputs = [ eigen gtest zlib abseil-cpp ] ++ buildInputs;
+
+      mesonFlags = [
+        # No embedded net — see the header.
+        "-Dembed=false"
+
+        # lc0 defaults native_arch on, which puts -march=native into a binary
+        # that CI builds once and the shared cache then serves to everyone: an
+        # engine tuned to the runner's CPU that SIGILLs on an older one. The
+        # rest of the collection strips these flags for the same reason (see
+        # stripArchFlags in lib/mkEngine.nix) — the portable baseline is the
+        # cacheable artifact, and -march=native belongs to an opt-in native
+        # build.
+        "-Dnative_arch=false"
+        "-Dispc_native_only=false"
+      ] ++ backendFlags backend ++ mesonFlags;
+
+      enableParallelBuilding = true;
+
+      doCheck = true;
+
+      # meson installs every variant as `bin/lc0`, which makes them collide in
+      # the `chess-engines-all` bundle: buildEnv is built with
+      # ignoreCollisions = true, so one arbitrary variant wins the `bin/lc0`
+      # symlink and the others vanish from the bundle without a word — CI
+      # builds and caches lc0-metal, and `nix profile install .#default` then
+      # hands you the CPU build. Give each accelerated variant its own name so
+      # all of them survive the merge. The CPU build keeps the bare `lc0`,
+      # which is what a consumer expects to type and matches the naming the
+      # previous lc0 packaging used.
+      postInstall = lib.optionalString (variant != null) ''
+        mv "$out/bin/lc0" "$out/bin/${name}"
+      '';
+
+      # Same guarantee as mkEngine: the binary must speak UCI. It stops at the
+      # handshake, because with no net pinned there is nothing to search with —
+      # lc0 answers `uci` from its built-in option table before any weights are
+      # touched, and before it opens a GPU device, so this is also the right
+      # depth of check for the accelerated variants on a driverless builder.
+      # The net-loading path is covered by the Maia engines, which pin theirs
+      # and do run a real search in their install check.
+      #
+      # expectBackend then asserts the variant is what its name claims. This is
+      # not belt-and-braces: `-Dopencl` and `-Dplain_cuda` are plain booleans
+      # that meson ANDs with its own library/header probes, so a probe that
+      # comes up empty downgrades the build to BLAS-only *and still succeeds*.
+      # A green CI run on a binary with no GPU backend in it is exactly the
+      # failure this repo shipped before — both variants were configured with
+      # libdirs that pointed nowhere, and nothing anywhere said so. The backend
+      # list comes from a compile-time registry, so this works on a builder
+      # with no GPU and no driver. Only opencl/cuda need it; -Dmetal is a meson
+      # feature set to `enabled`, which already fails loudly at configure time.
       doInstallCheck = true;
-      # Hold stdin open past the `go`: lc0 loads a ~150 MB net and initialises
-      # the eigen backend before searching, and exits on EOF. An instant pipe
-      # close makes it quit before it can answer bestmove — a false failure.
       installCheckPhase = ''
-        out_txt=$({ printf 'uci\nisready\nposition startpos\ngo nodes 40\n'; sleep 75; printf 'quit\n'; } \
-          | "$out/bin/${name}" 2>/dev/null | tr -d '\r')
-        echo "$out_txt" | grep -q uciok || { echo "FAIL: ${name} no uciok" >&2; exit 1; }
-        echo "$out_txt" | grep -q bestmove || { echo "FAIL: ${name} no bestmove — net likely not loaded" >&2; exit 1; }
-        echo "ok: ${name} searches"
+        runHook preInstallCheck
+        bin="$out/bin/${name}"
+        out_txt=$(printf 'uci\nquit\n' | "$bin" 2>/dev/null | tr -d '\r')
+        echo "$out_txt" | grep -q uciok || {
+          echo "FAIL: ${name} did not answer 'uciok' to a uci handshake" >&2
+          echo "$out_txt" >&2
+          exit 1
+        }
+        echo "ok: ${name} speaks UCI"
+      '' + lib.optionalString (expectBackend != null) ''
+        backends=$(echo "$out_txt" | grep 'option name Backend type' || true)
+        case " $backends " in
+          *" var ${expectBackend} "*)
+            echo "ok: '${expectBackend}' backend is compiled in" ;;
+          *)
+            echo "FAIL: this is lc0-${toString variant}, but '${expectBackend}' is not among its backends." >&2
+            echo "meson's probe for it failed and the backend was silently dropped." >&2
+            echo "got: $backends" >&2
+            exit 1 ;;
+        esac
+      '' + ''
+        runHook postInstallCheck
       '';
+
+      passthru = {
+        inherit acceptsAttentionNets;
+
+        # Compose this variant with a network from lib/lc0-networks.nix:
+        #
+        #   lc0-metal.withNet lc0-net-t1-512
+        #
+        # Four binaries and seven nets compose to 24 usable pairs; enumerating
+        # them as packages would mean 24 derivations that still would not cover
+        # the space, because within one backend the right net depends on the
+        # card and the time control. Only the pair a consumer actually asks for
+        # gets built.
+        #
+        # The guard is the point of carrying `architecture` on the nets: an
+        # OpenCL build paired with an attention net fails at *startup*, well
+        # after the build succeeded and the cache was populated. Refusing it
+        # during evaluation turns a runtime surprise into a message that says
+        # what to do instead.
+        withNet = net:
+          if (net.architecture or "attention") == "attention" && !acceptsAttentionNets
+          then
+            throw ''
+              ${name} cannot run the network ${net.shortName or net.name}.
+
+              Its backend accepts only classical/SE-ResNet networks, and this is an
+              attention-body net. lc0 would build fine and then fail at startup with
+              "Network format NETWORK_ATTENTIONBODY_WITH_HEADFORMAT is not supported
+              by OpenCL backend".
+
+              Use an SE-ResNet net (lc0-net-744706, lc0-net-ld2, lc0-net-sv-t60), or
+              a backend that takes attention nets (lc0, lc0-cuda, lc0-metal).
+              See docs/lc0-networks.md.
+            ''
+          else
+            runCommand "${name}-${net.shortName}-${version}"
+              {
+                nativeBuildInputs = [ makeWrapper ];
+                meta = self.meta // {
+                  description = self.meta.description
+                    + ", preloaded with the ${net.shortName} network";
+                  mainProgram = "${name}-${net.shortName}";
+                };
+              } ''
+              mkdir -p "$out/bin"
+              makeWrapper "${self}/bin/${name}" "$out/bin/${name}-${net.shortName}" \
+                --add-flags "--weights=${net}"
+            '';
+      };
 
       meta = with lib; {
-        description = "Leela Chess Zero with the ${suffix} network"
-          + lib.optionalString net.default " (CPU-practical default)";
+        description = "Leela Chess Zero, a neural-network MCTS engine"
+          + (if variant == null then " (CPU)" else " (${variant} backend)")
+          + ", bring your own network";
         homepage = "https://lczero.org";
         license = licenses.gpl3Only;
         mainProgram = name;
-        platforms = platforms.unix;
+        inherit platforms;
+        maintainers = [ ];
       };
-    };
+      };
+    in
+    self;
 in
-lib.mapAttrs' (suffix: net: lib.nameValuePair
-  (if net.default then "lc0" else "lc0-${suffix}")
-  (mkLc0 suffix net))
-  networks
+{
+  lc0 = mkLc0 {
+    variant = null;
+    backend = { };
+    platforms = lib.platforms.unix;
+  };
+}
+# OpenCL ships an ICD loader, and CUDA a toolchain, that only exist on Linux
+# here; on macOS the GPU story is Metal, below.
+// lib.optionalAttrs stdenv.hostPlatform.isLinux {
+  lc0-opencl = mkLc0 {
+    variant = "opencl";
+    backend = { opencl = true; };
+    platforms = lib.platforms.linux;
+    expectBackend = "opencl";
+    # opencl-clhpp supplies the C++ bindings as CL/opencl.hpp. It is not
+    # optional: lc0's src/neural/backends/opencl/OpenCL.h takes CL/opencl.hpp
+    # when __has_include finds one and otherwise falls back to its vendored
+    # third_party/opencl.hpp, and that vendored copy predates the split of the
+    # D3D external-memory enums into the Windows-only part of cl_ext.h. Against
+    # the current opencl-headers it fails to compile on
+    # CL_EXTERNAL_MEMORY_HANDLE_D3D11_TEXTURE_KHR and friends. Providing the
+    # real header keeps the fallback out of the build entirely.
+    buildInputs = [ ocl-icd opencl-headers opencl-clhpp ];
+    # Both paths have to be spelled out, and the libdir one is the trap: lc0
+    # gates the backend on `has_opencl`, which needs BOTH probes to pass, and
+    # then compiles a BLAS-only binary in silence when either fails.
+    #
+    #   opencl_include  defaults to /usr/include, where there is no CL/opencl.h.
+    #   opencl_libdirs  defaults to ['/opt/cuda/lib64/', '/usr/local/cuda/lib64/']
+    #                   and reaches meson as `cc.find_library('OpenCL', dirs:)`.
+    #                   A non-empty `dirs` makes find_library search those
+    #                   directories *instead of* the compiler's own search path,
+    #                   so ocl-icd being in buildInputs is not enough — without
+    #                   this the probe fails and -Dopencl=true is a no-op.
+    mesonFlags = [
+      "-Dopencl_include=${opencl-headers}/include"
+      "-Dopencl_libdirs=${lib.getLib ocl-icd}/lib"
+    ];
+  };
+
+  lc0-cuda = mkLc0 {
+    variant = "cuda";
+    backend = { cuda = true; };
+    platforms = lib.platforms.linux;
+    expectBackend = "cuda";
+    nativeBuildInputs = [ cudaPackages.cuda_nvcc ];
+    buildInputs = [ cudaPackages.cuda_cudart cudaPackages.libcublas ];
+    # Same silent-skip shape as OpenCL: the CUDA backend is gated on
+    # cublas/cudart/nvcc all being found, and lc0 drops it without a word
+    # otherwise. cudnn_libdirs is the one that bites — it is passed straight to
+    # `cc.find_library(dirs:)`, and a non-empty dirs list replaces the default
+    # library search path rather than extending it, so the /opt/cuda defaults
+    # shadow the store paths that buildInputs put in scope. cudnn_include
+    # (the option covers plain CUDA too) defaults to /opt/cuda as well.
+    mesonFlags = [
+      # cuda_nvcc is in this list for a header, not for the compiler: cudart's
+      # driver_types.h includes crt/host_defines.h, and that crt/ tree ships
+      # with nvcc rather than cudart. Without it the *C++* half of the backend
+      # (layers.cc, compiled by g++, not nvcc) fails to find it.
+      "-Dcudnn_include=${lib.getDev cudaPackages.cuda_cudart}/include,${lib.getDev cudaPackages.libcublas}/include,${lib.getDev cudaPackages.cuda_nvcc}/include"
+      "-Dcudnn_libdirs=${lib.getLib cudaPackages.cuda_cudart}/lib,${lib.getLib cudaPackages.libcublas}/lib"
+
+      # The CUDA counterpart of -Dnative_arch=false above, and it matters more:
+      # native_cuda defaults to true, which passes nvcc -arch=native so the GPU
+      # code is emitted only for the card in the build machine. On a builder
+      # with no NVIDIA card at all — CI, or any of the machines that would
+      # actually cut a release — nvcc cannot detect one, warns, and silently
+      # falls back to its default arch, producing a binary that is wrong
+      # everywhere on purpose. false selects -arch=all-major, which is the
+      # portable, cacheable artifact; an owner who wants their own card's arch
+      # can pass -Dcc_cuda= in a local build.
+      "-Dnative_cuda=false"
+    ];
+  };
+}
+// lib.optionalAttrs stdenv.hostPlatform.isDarwin {
+  lc0-metal = mkLc0 {
+    variant = "metal";
+    backend = { metal = true; };
+    platforms = lib.platforms.darwin;
+    # Link with LLVM lld. The default cctools ld (ld64 1010.6) dies with
+    # SIGTRAP on this link, and bisecting it shows the trigger is the
+    # Objective-C++ Metal objects themselves (NetworkGraph.mm,
+    # MetalNetworkBuilder.mm) — not the Metal frameworks, which each link fine
+    # on their own, and not LTO. lld links the same objects without complaint.
+    # Only this variant is affected; the others keep the stdenv linker.
+    #
+    # The arg has to go on objc/objcpp, not just cpp: the lc0 target mixes C++
+    # with Objective-C++, and meson picks the linker — and therefore the
+    # <lang>_link_args — from the ObjC++ side, so a lone -Dcpp_link_args is
+    # accepted at configure time and then never reaches the link.
+    nativeBuildInputs = [ lld ];
+    mesonFlags = [
+      "-Dcpp_link_args=-fuse-ld=lld"
+      "-Dobjc_link_args=-fuse-ld=lld"
+      "-Dobjcpp_link_args=-fuse-ld=lld"
+    ];
+  };
+}

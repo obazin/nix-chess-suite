@@ -7,7 +7,7 @@ that currently cross-compile — refresh from the latest CI Windows job."""
 import json, subprocess, sys
 
 # Engines that currently cross-compile to Windows (from the CI windows job).
-WINDOWS = set("""akimbo arasan berserk bit-genie blackmarlin caissa carp cheng4
+WINDOWS = set("""akimbo arasan berserk bit-genie caissa carp cheng4
 cinnamon clover ct800 deepov demolito discocheck fabchess fruit gambitfruit
 glaurung laser loki minic napoleon obsidian pulse reckless rodent-iv rustic
 senpai shallow-blue stash stockfish svart texel togaii tucano vajolet2 velvet
@@ -16,14 +16,17 @@ vice viridithas wahoo weiss willow winter wukong wyldchess xiphos""".split())
 # (approx Elo, eval/algorithm, language). Elo is ballpark (CCRL/TCEC/class).
 DATA = {
  "stockfish":(3650,"NNUE","C++"),"lc0":(3500,"NN + MCTS","C++"),
- "lc0-t1-256":(3300,"NN + MCTS","C++"),"minic":(3690,"NNUE","C++"),
+ # lc0 ships one build per backend and no network; the Elo is what a strong
+ # net gets you, not a property of the binary. See engines/lc0.nix.
+ "lc0-metal":(3500,"NN + MCTS","C++"),"lc0-opencl":(3500,"NN + MCTS","C++"),
+ "lc0-cuda":(3500,"NN + MCTS","C++"),"minic":(3690,"NNUE","C++"),
  "berserk":(3616,"NNUE","C"),"obsidian":(3618,"NNUE","C++"),
  "plentychess":(3611,"NNUE","C++"),"caissa":(3610,"NNUE","C++"),
  "rubichess":(3602,"NNUE","C"),"viridithas":(3602,"NNUE","Rust"),
  "alexandria":(3602,"NNUE","C++"),"clover":(3597,"NNUE","C++"),
  "seer":(3585,"NNUE","C++"),"igel":(3577,"NNUE","C++"),
  "stormphrax":(3535,"NNUE","C++"),"heimdall":(3500,"NNUE","Nim"),
- "velvet":(3500,"NNUE","Rust"),"blackmarlin":(3450,"NNUE","Rust"),
+ "velvet":(3500,"NNUE","Rust"),
  "arasan":(3450,"NNUE","C++"),"reckless":(3420,"NNUE","Rust"),
  "avalanche":(3400,"NNUE","Zig"),"marvin":(3300,"NNUE","C++"),
  "carp":(3300,"NNUE","Rust"),"akimbo":(3300,"NNUE","Rust"),
@@ -60,8 +63,10 @@ def meta():
       let
         f = builtins.getFlake (toString ./.);
         p = f.packages.aarch64-darwin;
-        keep = n: ! (builtins.elem n [ "default" "all" ])
-                  && builtins.substring 0 4 n != "win-";
+        keep = n: ! (builtins.elem n [ "default" "all" "native" ])
+                  && builtins.substring 0 4 n != "win-"
+                  # lc0-net-* are weights, not engines (see lib/lc0-networks.nix)
+                  && builtins.substring 0 8 n != "lc0-net-";
         ns = builtins.filter keep (builtins.attrNames p);
         m = n: {
           homepage = p.${n}.meta.homepage or "";
