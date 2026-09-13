@@ -7,7 +7,20 @@
 # fields and the UCI smoke test below mirror lib/mkEngine.nix so this engine
 # is checked to the same standard as the rest of the collection.
 
-buildGoModule rec {
+(buildGoModule.override {
+  # counter's go.mod declares `go 1.22`, but nixpkgs' floating default `go`
+  # has drifted well past that (1.26.7 as of this writing) and that specific
+  # jump makes the binary stop answering the UCI handshake below - it builds
+  # cleanly but installCheckPhase fails. `go` is a curried argument to
+  # buildGoModule (see pkgs/build-support/go/module.nix), not a per-call
+  # attribute, so it must be swapped in via .override here, not by setting
+  # `go = ...;` inside the derivation attrset below (that would silently do
+  # nothing but pull in the override's `go` as an unused input). Pin to the
+  # oldest generation nixpkgs still carries that satisfies go.mod, so a
+  # future nixpkgs bump can't repeat this by quietly floating the compiler
+  # forward again.
+  go = buildPackages.go_1_25;
+}) rec {
   pname = "counter";
   version = "5.5";
 
