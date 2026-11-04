@@ -231,11 +231,11 @@ The `f6h5` lines are all winning by about +7; they simply are not the mate.
 ## Still open
 
 - **`lc0-cuda` has never executed a kernel** (check 5). Needs an NVIDIA host.
-- **`ci/update-nets.sh` does not exist** — confirmed still true, so the NNUE
-  net-refresh step in `ci/update.sh:120` is silently skipped by its `[ -x ]`
-  guard. Same silent-skip shape as the two backend bugs above.
+- **Only Caissa's net is re-pinned automatically.** `ci/update-nets.sh` now exists and runs between nix-update and the build, but it has a handler for Caissa alone. Every other strong-tier engine's net is still a manual pin, and an engine with no handler is passed over without a word, the same silent-skip shape as before, just narrower.
 
 ### Closed
+
+- ~~`ci/update-nets.sh` does not exist, so the net-refresh step in `ci/update.sh` was silently skipped by its `[ -x ]` guard.~~ It exists now, packaged into the `update` app so it is shellchecked, and is called per engine between nix-update and the build. Its first handler is Caissa, whose pinned net (`eval-71`) had been deleted upstream, breaking every fresh build of the engine; the pin now lives in `engines/caissa-net.json` and follows `DEFAULT_NEURAL_NET_FILE_NAME` in the release's `CMakeLists.txt`. Bump failures are now printed to stdout as well, so they reach the PR body instead of only the workflow log.
 
 - ~~The nightly `update` workflow cannot open its PR.~~ Fixed at the repository
   level: `can_approve_pull_request_reviews` is now `true`.
