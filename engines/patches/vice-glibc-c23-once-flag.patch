@@ -1,0 +1,31 @@
+--- a/tinycthread.h
++++ b/tinycthread.h
+@@ -457,8 +457,17 @@
+   } once_flag;
+   #define ONCE_FLAG_INIT {0,}
+ #else
+-  #define once_flag pthread_once_t
+-  #define ONCE_FLAG_INIT PTHREAD_ONCE_INIT
++  /* C23 has <stdlib.h> declare once_flag, ONCE_FLAG_INIT and call_once, and
++   * glibc does so whenever _GNU_SOURCE is on (as it is above). Defining them
++   * as macros here would rewrite those declarations into conflicting ones in
++   * any file that includes <stdlib.h> after this header, so pull it in first
++   * and keep the libc versions when it has them. */
++  #include <stdlib.h>
++  #if !defined(ONCE_FLAG_INIT)
++    #define _TTHREAD_ONCE_FROM_PTHREAD_
++    #define once_flag pthread_once_t
++    #define ONCE_FLAG_INIT PTHREAD_ONCE_INIT
++  #endif
+ #endif
+ 
+ /** Invoke a callback exactly once
+@@ -468,7 +477,7 @@
+  */
+ #if defined(_TTHREAD_WIN32_)
+   void call_once(once_flag *flag, void (*func)(void));
+-#else
++#elif defined(_TTHREAD_ONCE_FROM_PTHREAD_)
+   #define call_once(flag,func) pthread_once(flag,func)
+ #endif
+ 
