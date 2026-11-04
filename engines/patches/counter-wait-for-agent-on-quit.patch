@@ -1,0 +1,23 @@
+--- a/pkg/uci/run.go
++++ b/pkg/uci/run.go
+@@ -7,12 +7,18 @@
+ 
+ func Run(eng *EngineAgent) error {
+ 	var cmds = make(chan any)
+-	defer close(cmds)
++	var agentDone = make(chan struct{})
+ 	go func() {
++		defer close(agentDone)
+ 		var err = eng.Run(cmds)
+ 		if err != nil {
+ 			log.Println(err)
+ 		}
+ 	}()
+-	return ReadCommands(os.Stdin, cmds)
++	var readError = ReadCommands(os.Stdin, cmds)
++	// Let the agent drain whatever it is still printing (the uci option list,
++	// a final bestmove) before main returns and the process exits.
++	close(cmds)
++	<-agentDone
++	return readError
+ }
