@@ -308,9 +308,17 @@
       # Wrapped so nix-update and its helpers are on PATH in a pinned env.
       apps = forAllSystems (pkgs:
         let
+          # Called by update-engines between nix-update and the build; packaged
+          # rather than run as ./ci/update-nets.sh so it is shellchecked and
+          # finds its tools whatever the caller's PATH is.
+          netUpdater = pkgs.writeShellApplication {
+            name = "update-nets";
+            runtimeInputs = with pkgs; [ nix jq gnused ];
+            text = builtins.readFile ./ci/update-nets.sh;
+          };
           updater = pkgs.writeShellApplication {
             name = "update-engines";
-            runtimeInputs = with pkgs; [ nix-update nix jq curl gnused coreutils ];
+            runtimeInputs = with pkgs; [ nix-update nix jq curl gnused coreutils netUpdater ];
             text = builtins.readFile ./ci/update.sh;
           };
         in

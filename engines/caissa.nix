@@ -13,25 +13,33 @@
 # and the USE_AVX2 defines), so it is unusable on ARM and we ignore it.
 
 let
-  # At the 1.25 tag CMake references data/neuralNets/eval-71.pnn but neither
-  # commits it nor downloads it (the src/makefile is what curls it from the
-  # Caissa-Nets releases). Pin exactly that net so the build never touches the
-  # network. eval-71.pnn is the id named in CMakeLists.txt / src/makefile at
-  # 1.25, and it is still published as a Caissa-Nets release asset.
+  # Each Caissa release names exactly one net in CMakeLists.txt
+  # (DEFAULT_NEURAL_NET_FILE_NAME) and has CMake download it from the
+  # Caissa-Nets releases at configure time. Pin that net here instead, so the
+  # build never touches the network, and drop it where CMake looks for it;
+  # CMake skips its download when the file is already present.
+  #
+  # The name and hash live in caissa-net.json, not inline, because
+  # ci/update-nets.sh rewrites them whenever nix-update moves `version`: the
+  # net has to follow the release. Upstream also deletes old net releases
+  # (eval-71, pinned for 1.25, is gone), so a stale pin fails to build rather
+  # than quietly staying behind.
+  netPin = lib.importJSON ./caissa-net.json;
+  netFile = "${netPin.name}.pnn";
   net = fetchurl {
-    url = "https://github.com/Witek902/Caissa-Nets/releases/download/eval-71/eval-71.pnn";
-    hash = "sha256-YVzvjSXYuzrOU/1cxN7XVG8NHI/OEGdv2DyGRCEmK1s=";
+    url = "https://github.com/Witek902/Caissa-Nets/releases/download/${netPin.name}/${netFile}";
+    inherit (netPin) hash;
   };
 in
 stdenv.mkDerivation rec {
   pname = "caissa";
-  version = "1.25";
+  version = "2.0";
 
   src = fetchFromGitHub {
     owner = "Witek902";
     repo = "Caissa";
     rev = version;
-    hash = "sha256-NRUv0kp7QTm00WuuRvokUVJO4kzHcN4IBeYY80cjNRk=";
+    hash = "sha256-HM6CpFRfbBIs5VlzbP3e/Wz9p/B3seZ5oI5OVEFhmPA=";
   };
 
   nativeBuildInputs = [ cmake ];
@@ -64,10 +72,18 @@ stdenv.mkDerivation rec {
     grep -rlZ '<Windows.h>' --include='*.c' --include='*.cc' --include='*.cpp' --include='*.cxx' --include='*.h' --include='*.hpp' --include='*.hh' --include='*.hxx' . 2>/dev/null \
       | xargs -0 -r sed -i 's/<Windows.h>/<windows.h>/g' || true
 
-    # Drop the pinned net where CMake's `file(COPY data/neuralNets/eval-71.pnn
-    # ...)` expects it. Nothing else fetches it in the CMake path.
+    # Refuse to build against a net the source does not ask for, e.g. when the
+    # version was bumped but the net pin was not.
+    grep -qF 'set(DEFAULT_NEURAL_NET_FILE_NAME ${netFile})' CMakeLists.txt || {
+      echo "FAIL: caissa-net.json pins ${netFile}, but CMakeLists.txt names:" >&2
+      grep 'DEFAULT_NEURAL_NET_FILE_NAME' CMakeLists.txt >&2 || true
+      exit 1
+    }
+
+    # Drop the pinned net where CMake expects it; with the file present CMake
+    # skips its own download.
     mkdir -p data/neuralNets
-    cp ${net} data/neuralNets/eval-71.pnn
+    cp ${net} data/neuralNets/${netFile}
 
     # The CMake path (unlike the Makefile) never defines CAISSA_EVALFILE, so
     # Evaluate.cpp would fall back to loading the net from a file at runtime
@@ -76,7 +92,7 @@ stdenv.mkDerivation rec {
     # the engine is fully self-contained, matching every other engine here.
     substituteInPlace CMakeLists.txt \
       --replace-fail 'add_subdirectory("src")' \
-        'add_compile_definitions(CAISSA_EVALFILE="''${CMAKE_SOURCE_DIR}/data/neuralNets/eval-71.pnn")
+        'add_compile_definitions(CAISSA_EVALFILE="''${CMAKE_SOURCE_DIR}/data/neuralNets/${netFile}")
 add_subdirectory("src")'
 
     # Upstream builds -Werror; a newer clang than the author tested turns fresh

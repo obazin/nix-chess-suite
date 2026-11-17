@@ -7,20 +7,7 @@
 # fields and the UCI smoke test below mirror lib/mkEngine.nix so this engine
 # is checked to the same standard as the rest of the collection.
 
-(buildGoModule.override {
-  # counter's go.mod declares `go 1.22`, but nixpkgs' floating default `go`
-  # has drifted well past that (1.26.7 as of this writing) and that specific
-  # jump makes the binary stop answering the UCI handshake below - it builds
-  # cleanly but installCheckPhase fails. `go` is a curried argument to
-  # buildGoModule (see pkgs/build-support/go/module.nix), not a per-call
-  # attribute, so it must be swapped in via .override here, not by setting
-  # `go = ...;` inside the derivation attrset below (that would silently do
-  # nothing but pull in the override's `go` as an unused input). Pin to the
-  # oldest generation nixpkgs still carries that satisfies go.mod, so a
-  # future nixpkgs bump can't repeat this by quietly floating the compiler
-  # forward again.
-  go = buildPackages.go_1_25;
-}) rec {
+buildGoModule rec {
   pname = "counter";
   version = "5.5";
 
@@ -35,6 +22,17 @@
     rev = "de02aef5a6887b82383ae9a7d6ce0614b730155f";
     hash = "sha256-2qA+0l/LN0x0wkV5hK5vdbyKIwhcRbKA7DODKAfIL9w=";
   };
+
+  # Upstream's uci.Run returns as soon as the stdin reader sees `quit`, and
+  # main exits without waiting for the goroutine that writes the replies. So
+  # `uci` immediately followed by `quit` can lose the tail of the reply,
+  # including `uciok`; a mid-search `quit` can likewise lose the final
+  # `bestmove`. It is a plain race, not a toolchain bug: Go 1.25 happened to
+  # win it, Go 1.26's scheduler reliably loses it, and the installCheckPhase
+  # handshake below hits exactly that sequence. The patch makes Run close the
+  # command channel and wait for the agent to drain before returning. This
+  # replaces an earlier pin to go_1_25, which nixpkgs has since removed.
+  patches = [ ./patches/counter-wait-for-agent-on-quit.patch ];
 
   # go.mod declares no requires at all - the engine is pure stdlib - so there
   # is no module cache to fix up.

@@ -23,6 +23,15 @@ mkEngine rec {
 
   sourceRoot = "source/Vice11/src";
 
+  # The bundled tinycthread defines `once_flag` and `call_once` as macros on
+  # POSIX. glibc 2.44 declares the C23 versions of both in <stdlib.h> (enabled
+  # by the _GNU_SOURCE tinycthread itself sets), so tinycthread.c, which
+  # includes <stdlib.h> right after tinycthread.h, fails with "conflicting
+  # types for 'pthread_once_t'". The patch includes <stdlib.h> first and keeps
+  # the libc definitions when they exist; Darwin and the Windows cross, which
+  # have none, still get tinycthread's.
+  patches = [ ./patches/vice-glibc-c23-once-flag.patch ];
+
   # The makefile hardcodes `gcc`, which does not exist under the Nix clang
   # stdenv on Darwin. Point it at the toolchain's cc (mkEngine also passes
   # CC=cc as a make flag, but this makefile ignores $(CC) and calls gcc
